@@ -1,0 +1,143 @@
+{
+  "projectType": "saas",
+  "projectName": "DragonHacks Event Platform",
+  "projectDescription": "A full-stack event management platform with user authentication, event creation, registrations, and WhatsApp notifications.",
+  "theme": "mint",
+  "primaryColor": "#10b981",
+  "lightColor": "#34d399",
+  "darkColor": "#059669",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Setup & Deployment",
+            "pages": [
+              "setup/prerequisites",
+              "setup/installation",
+              "setup/configuration",
+              "setup/database",
+              "setup/docker"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/authentication",
+              "features/events",
+              "features/registrations",
+              "features/announcements",
+              "features/whatsapp-notifications"
+            ]
+          },
+          {
+            "group": "Frontend Development",
+            "pages": [
+              "frontend/overview",
+              "frontend/components",
+              "frontend/routing",
+              "frontend/state-management"
+            ]
+          },
+          {
+            "group": "Backend Development",
+            "pages": [
+              "backend/overview",
+              "backend/orpc-contracts",
+              "backend/modules",
+              "backend/database-schema"
+            ]
+          },
+          {
+            "group": "WhatsApp Bot",
+            "pages": [
+              "whatsapp/overview",
+              "whatsapp/baileys-integration",
+              "whatsapp/message-handlers"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/introduction",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "api/users/get-me",
+              "api/users/get-by-id"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events/get-all",
+              "api/events/get-by-id",
+              "api/events/create",
+              "api/events/update",
+              "api/events/delete",
+              "api/events/banner-upload"
+            ]
+          },
+          {
+            "group": "Registrations",
+            "pages": [
+              "api/registrations/overview",
+              "api/registrations/create",
+              "api/registrations/check-in"
+            ]
+          },
+          {
+            "group": "Announcements",
+            "pages": [
+              "api/announcements/overview",
+              "api/announcements/create"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "User Authentication with Better Auth",
+    "Event Management (Create, Update, Delete)",
+    "Event Registrations with Approval Workflow",
+    "Real-time Announcements",
+    "WhatsApp Bot Integration for Notifications",
+    "File Upload with S3-compatible Storage",
+    "Email Notifications via AWS SES",
+    "Type-safe API with oRPC Contracts",
+    "Modern Frontend with Next.js 16 and React 19",
+    "Background Job Processing with BullMQ"
+  ],
+  "publicApiSurface": [
+    "GET /users/me - Get current user profile",
+    "GET /users/{id} - Get user by ID",
+    "GET /events - Get all events with pagination",
+    "GET /events/{id} - Get event details",
+    "POST /events - Create new event",
+    "PUT /events/{id} - Update event",
+    "DELETE /events - Delete event",
+    "POST /events/banner-upload-url - Get presigned upload URL",
+    "POST /events/registrations - Register for event",
+    "POST /events/announcements - Create announcement",
+    "Better Auth endpoints for authentication",
+    "WhatsApp bot message handlers"
+  ]
+}
