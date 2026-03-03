@@ -1,0 +1,341 @@
+---
+title: Event Registrations
+description: Learn how users register for events and how organizers manage attendees
+---
+
+## Overview
+
+Event registrations allow users to sign up for events and enable organizers to manage attendance, approvals, and check-ins.
+
+## Registration Model
+
+```prisma
+// apps/backend/prisma/schema.prisma:163-179
+model EventRegistration {
+  id        String   @id @default(uuid())
+
+  eventId String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  userId  String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  status RegistrationStatus @default(APPROVED)
+  checkedInAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+}
+```
+
+## Registration Status
+
+```prisma
+// apps/backend/prisma/schema.prisma:112-117
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WAITLIST
+}
+```
+
+## Registering for Events
+
+Users can register for events through the registration endpoint:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:22-60
+async register(eventId: string, userId: string): Promise<{ id: string; status: RegistrationStatus }> {
+  const event = await this.prisma.event.findUnique({
+    where: { id: eventId },
+    include: {
+      eventOrganizers: { where: { userId } },
+      eventRegistration: { where: { status: 'APPROVED' } },
+      _count: { select: { eventRegistration: true } },
+    },
+  });
+  if (!event) throw new ORPCError('NOT_FOUND');
+
+  // Organizers cannot register for their own event
+  if (event.eventOrganizers.some((o) => o.userId === userId)) {
+    throw new ORPCError('FORBIDDEN', { message: 'Organizers cannot register for their own event' });
+  }
+
+  // Check for duplicate registration
+  const existing = await this.prisma.eventRegistration.findUnique({
+    where: { eventId_userId: { eventId, userId } },
+  });
+  if (existing) throw new ORPCError('BAD_REQUEST', { message: 'Already registered' });
+
+  // Check capacity for auto-approval events
+  const approvedCount = event.eventRegistration.length;
+  if (approvedCount >= event.capacity && !event.requireApproval) {
+    throw new ORPCError('BAD_REQUEST', { message: 'Event at capacity' });
+  }
+
+  // Determine initial status
+  const status: RegistrationStatus = event.requireApproval ? 'PENDING' : 'APPROVED';
+  const registration = await this.prisma.eventRegistration.create({
+    data: { eventId, userId, status },
+  });
+
+  // Auto-approved: schedule reminder 1 day before event
+  if (status === 'APPROVED') {
+    await this.notificationService
+      .scheduleEventReminder(userId, eventId)
+      .catch(() => {});
+  }
+
+  return { id: registration.id, status: registration.status };
+}
+```
+
+### Auto-Approval vs Manual Approval
+
+- **Auto-approval** (`requireApproval: false`): Registrations are instantly APPROVED until capacity is reached
+- **Manual approval** (`requireApproval: true`): Registrations start as PENDING and must be approved by organizers
+
+### Registration Validations
+
+1. Event must exist
+2. User cannot be an organizer of the event
+3. User cannot register twice for the same event
+4. For auto-approval events, capacity must not be exceeded
+
+## Unregistering from Events
+
+Users can cancel their registration:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:62-70
+async unregister(eventId: string, userId: string): Promise<void> {
+  const deleted = await this.prisma.eventRegistration.deleteMany({
+    where: { eventId, userId },
+  });
+  if (deleted.count === 0) throw new ORPCError('NOT_FOUND');
+
+  // Cancel scheduled reminder
+  await this.notificationService.cancelEventReminder(userId, eventId).catch(() => {});
+}
+```
+
+When users unregister, their scheduled event reminder is automatically canceled.
+
+## Organizer Features
+
+### Approving Registrations
+
+Organizers can approve pending registrations:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:117-155
+async approveRegistration(eventId: string, registrationId: string, organizerUserId: string): Promise<void> {
+  const event = await this.prisma.event.findUnique({
+    where: { id: eventId },
+    include: { eventRegistration: { where: { status: 'APPROVED' } } },
+  });
+  if (!event) throw new ORPCError('NOT_FOUND');
+
+  const isOrg = await this.isOrganizer(eventId, organizerUserId);
+  if (!isOrg) throw new ORPCError('FORBIDDEN');
+
+  const reg = await this.prisma.eventRegistration.findFirst({
+    where: { id: registrationId, eventId },
+  });
+  if (!reg) throw new ORPCError('NOT_FOUND');
+  if (reg.status !== 'PENDING' && reg.status !== 'WAITLIST') throw new ORPCError('NOT_FOUND');
+
+  // Check capacity
+  if (event.eventRegistration.length >= event.capacity) {
+    throw new ORPCError('BAD_REQUEST', { message: 'Event at capacity' });
+  }
+
+  await this.prisma.eventRegistration.update({
+    where: { id: registrationId },
+    data: { status: 'APPROVED' },
+  });
+
+  // Schedule event reminder
+  await this.notificationService
+    .scheduleEventReminder(reg.userId, eventId)
+    .catch(() => {});
+
+  // Notify user via email and WhatsApp
+  await this.notificationService
+    .notifyUser(reg.userId, {
+      subject: `You're in! Registration approved for "${event.name}"`,
+      body: `Great news! Your registration for "${event.name}" has been approved. See you there!`,
+      whatsappText: `Your registration for *${event.name}* has been approved! See you there!`,
+    })
+    .catch(() => {});
+}
+```
+
+### Rejecting Registrations
+
+Organizers can reject pending registrations:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:157-171
+async rejectRegistration(eventId: string, registrationId: string, organizerUserId: string): Promise<void> {
+  const isOrg = await this.isOrganizer(eventId, organizerUserId);
+  if (!isOrg) throw new ORPCError('FORBIDDEN');
+
+  const reg = await this.prisma.eventRegistration.findFirst({
+    where: { id: registrationId, eventId },
+  });
+  if (!reg) throw new ORPCError('NOT_FOUND');
+  if (reg.status !== 'PENDING' && reg.status !== 'WAITLIST') throw new ORPCError('NOT_FOUND');
+
+  await this.prisma.eventRegistration.update({
+    where: { id: registrationId },
+    data: { status: 'REJECTED' },
+  });
+}
+```
+
+### Viewing All Registrations
+
+Organizers can view all registrations for their events with pagination:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:173-208
+async getAllRegistrationsByEventId(eventId: string, organizerUserId: string, cursor?: string, limit = 20) {
+  const isOrg = await this.isOrganizer(eventId, organizerUserId);
+  if (!isOrg) throw new ORPCError('FORBIDDEN');
+
+  const cursorArgs = buildPrismaCursorPaginationArgs(cursor);
+  const take = limit + 1;
+
+  const rows = await this.prisma.eventRegistration.findMany({
+    where: { eventId },
+    ...cursorArgs,
+    take,
+    orderBy: { createdAt: 'desc' },
+    include: {
+      user: { select: { id: true, name: true, image: true } },
+    },
+  });
+
+  const { items, nextCursor, hasNextPage } = buildCursorPagination(rows, limit, (r) => r.id);
+
+  return {
+    items: items.map((r) => ({
+      id: r.id,
+      status: r.status,
+      checkedInAt: r.checkedInAt ?? null,
+      user: {
+        id: r.user.id,
+        name: r.user.name,
+        profilePictureUrl: r.user.image ?? null,
+      },
+      createdAt: r.createdAt,
+    })),
+    nextCursor: nextCursor ?? undefined,
+    hasNextPage,
+  };
+}
+```
+
+## Attendance Management
+
+### Checking In Attendees
+
+Organizers can mark attendees as checked in:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:72-100
+async registerAttendance(eventId: string, registrationId: string, organizerUserId: string): Promise<void> {
+  const reg = await this.prisma.eventRegistration.findFirst({
+    where: { id: registrationId, eventId },
+  });
+  if (!reg) throw new ORPCError('NOT_FOUND');
+
+  const isOrg = await this.isOrganizer(eventId, organizerUserId);
+  if (!isOrg) throw new ORPCError('FORBIDDEN');
+
+  await this.prisma.eventRegistration.update({
+    where: { id: registrationId },
+    data: { checkedInAt: new Date() },
+  });
+
+  // Notify user they've been checked in
+  const event = await this.prisma.event.findUnique({
+    where: { id: eventId },
+    select: { name: true },
+  });
+  if (event) {
+    await this.notificationService
+      .notifyUser(reg.userId, {
+        subject: `Checked in to "${event.name}"`,
+        body: `You've been checked in to "${event.name}". Enjoy the event!`,
+        whatsappText: `You've been checked in to *${event.name}*. Enjoy the event!`,
+      })
+      .catch(() => {});
+  }
+}
+```
+
+### Removing Check-In
+
+Organizers can also undo check-ins:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:102-115
+async unregisterAttendance(eventId: string, registrationId: string, organizerUserId: string): Promise<void> {
+  const reg = await this.prisma.eventRegistration.findFirst({
+    where: { id: registrationId, eventId },
+  });
+  if (!reg) throw new ORPCError('NOT_FOUND');
+
+  const isOrg = await this.isOrganizer(eventId, organizerUserId);
+  if (!isOrg) throw new ORPCError('FORBIDDEN');
+
+  await this.prisma.eventRegistration.update({
+    where: { id: registrationId },
+    data: { checkedInAt: null },
+  });
+}
+```
+
+## Event Reminders
+
+When a registration is approved (automatically or manually), the platform schedules a reminder notification to be sent 24 hours before the event starts. See [WhatsApp Notifications](/features/whatsapp-notifications) for more details.
+
+## API Endpoints
+
+All registration endpoints are protected and require authentication:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.controller.ts
+
+// Register for event
+contract.events.registrations.register
+
+// Unregister from event
+contract.events.registrations.unregister
+
+// Check in attendee (organizers only)
+contract.events.registrations.registerAttandance
+
+// Remove check-in (organizers only)
+contract.events.registrations.unregisterAttandance
+
+// Approve registration (organizers only)
+contract.events.registrations.approveRegistration
+
+// Reject registration (organizers only)
+contract.events.registrations.rejectRegistration
+
+// List all registrations (organizers only)
+contract.events.registrations.getAllRegistrationsByEventId
+```
+
+## Related Features
+
+- [Events](/features/events) - Learn about event creation and management
+- [Announcements](/features/announcements) - Send updates to registered participants
+- [WhatsApp Notifications](/features/whatsapp-notifications) - Automated event reminders

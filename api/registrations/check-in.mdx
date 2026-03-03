@@ -1,0 +1,236 @@
+---
+title: 'Check-In Management'
+description: 'Check attendees in and out during events'
+---
+
+## Check In Attendee
+
+<Note>
+  Requires organizer permissions. Marks a registered user as checked in by setting the `checkedInAt` timestamp.
+</Note>
+
+Checks in a registered attendee during an event. This confirms their physical presence and sends them a notification.
+
+<CodeGroup>
+```typescript POST /events/{eventId}/registrations/{registrationId}/attandance
+import { client } from './client'
+
+await client.events.registrations.registerAttandance({
+  eventId: 'clx1234567890abcdef',
+  registrationId: 'reg_abc123'
+})
+
+// User receives notification: "Checked in to [Event Name]"
+```
+
+```bash cURL
+curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/attandance \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="eventId" type="string" required>
+  The unique identifier of the event
+</ParamField>
+
+<ParamField path="registrationId" type="string" required>
+  The unique identifier of the registration to check in
+</ParamField>
+
+### Response
+
+Returns no content on success. The registration's `checkedInAt` field is set to the current timestamp, and the user receives a notification:
+
+**Email subject:** "Checked in to [Event Name]"
+
+**Email/WhatsApp body:** "You've been checked in to [Event Name]. Enjoy the event!"
+
+### Check-In Process
+
+<Steps>
+  <Step title="Verify Registration">
+    Confirms the registration exists for the specified event
+  </Step>
+  
+  <Step title="Check Permissions">
+    Verifies the authenticated user is an organizer of the event
+  </Step>
+  
+  <Step title="Update Check-In Status">
+    Sets `checkedInAt` to the current date and time
+  </Step>
+  
+  <Step title="Send Notification">
+    Sends email and WhatsApp notification to the registered user
+  </Step>
+</Steps>
+
+### Errors
+
+- `404 NOT_FOUND`: Registration does not exist for this event
+- `403 FORBIDDEN`: User is not an organizer of this event
+
+### Example Use Case
+
+```typescript
+// Check in attendees at event entrance
+const attendees = [
+  'reg_abc123',
+  'reg_def456',
+  'reg_ghi789'
+]
+
+for (const registrationId of attendees) {
+  try {
+    await client.events.registrations.registerAttandance({
+      eventId: 'clx1234567890abcdef',
+      registrationId
+    })
+    console.log(`✓ Checked in: ${registrationId}`)
+  } catch (error) {
+    console.error(`✗ Failed to check in ${registrationId}:`, error.message)
+  }
+}
+```
+
+---
+
+## Remove Check-In
+
+<Note>
+  Requires organizer permissions. Removes the check-in status from a registration.
+</Note>
+
+Removes the check-in status from a registered attendee by clearing the `checkedInAt` timestamp. Useful for correcting accidental check-ins.
+
+<CodeGroup>
+```typescript DELETE /events/{eventId}/registrations/{registrationId}/attandance
+import { client } from './client'
+
+await client.events.registrations.unregisterAttandance({
+  eventId: 'clx1234567890abcdef',
+  registrationId: 'reg_abc123'
+})
+
+// Check-in status removed
+```
+
+```bash cURL
+curl -X DELETE https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/attandance \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="eventId" type="string" required>
+  The unique identifier of the event
+</ParamField>
+
+<ParamField path="registrationId" type="string" required>
+  The unique identifier of the registration to uncheck
+</ParamField>
+
+### Response
+
+Returns no content on success. The registration's `checkedInAt` field is set to `null`.
+
+### Errors
+
+- `404 NOT_FOUND`: Registration does not exist for this event
+- `403 FORBIDDEN`: User is not an organizer of this event
+
+---
+
+## Check-In Statistics
+
+You can use the [List Registrations](/api/registrations/create#list-registrations) endpoint to calculate check-in statistics:
+
+```typescript
+import { client } from './client'
+
+const result = await client.events.registrations.getAllRegistrationsByEventId({
+  eventId: 'clx1234567890abcdef'
+})
+
+// Calculate statistics
+const stats = result.items.reduce((acc, reg) => {
+  if (reg.status === 'APPROVED') {
+    acc.approved++
+    if (reg.checkedInAt) {
+      acc.checkedIn++
+    }
+  }
+  return acc
+}, { approved: 0, checkedIn: 0 })
+
+console.log(`Check-in rate: ${stats.checkedIn}/${stats.approved} (${Math.round(stats.checkedIn / stats.approved * 100)}%)`)
+// Example output: "Check-in rate: 45/60 (75%)"
+```
+
+## Check-In Workflow Example
+
+<Steps>
+  <Step title="Event Day Preparation">
+    Organizers access the event's registration list to prepare for check-ins
+    
+    ```typescript
+    const registrations = await client.events.registrations.getAllRegistrationsByEventId({
+      eventId: eventId
+    })
+    
+    const approvedCount = registrations.items.filter(r => r.status === 'APPROVED').length
+    console.log(`Expecting ${approvedCount} attendees`)
+    ```
+  </Step>
+  
+  <Step title="Check-In at Door">
+    As attendees arrive, organizers check them in using their registration ID
+    
+    ```typescript
+    await client.events.registrations.registerAttandance({
+      eventId: eventId,
+      registrationId: scannedRegistrationId
+    })
+    ```
+  </Step>
+  
+  <Step title="User Receives Confirmation">
+    Attendee receives notification confirming check-in via email and WhatsApp
+  </Step>
+  
+  <Step title="Track Attendance">
+    Monitor check-in progress throughout the event
+    
+    ```typescript
+    const updated = await client.events.registrations.getAllRegistrationsByEventId({
+      eventId: eventId
+    })
+    
+    const checkedIn = updated.items.filter(r => r.checkedInAt !== null).length
+    console.log(`${checkedIn} attendees checked in so far`)
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="QR Code Integration" icon="qrcode">
+    Generate QR codes containing registration IDs for faster check-ins at the door
+  </Card>
+  
+  <Card title="Offline Support" icon="wifi-slash">
+    Queue check-in requests locally if internet is unavailable, then sync when connection is restored
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Display clear error messages if a registration is not found or already checked in
+  </Card>
+  
+  <Card title="Undo Capability" icon="rotate-left">
+    Provide organizers a way to undo accidental check-ins using the unregister attendance endpoint
+  </Card>
+</CardGroup>

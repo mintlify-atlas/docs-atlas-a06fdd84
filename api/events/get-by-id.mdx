@@ -1,0 +1,224 @@
+---
+title: 'Get Event by ID'
+api: 'GET /events/{id}'
+---
+
+Retrieve detailed information about a specific event by its ID, including registration and organizer status for the authenticated user.
+
+## Authentication
+
+Optional. If authenticated, the response includes user-specific information (registration status and organizer status).
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the event.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique identifier for the event.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Event name.
+</ResponseField>
+
+<ResponseField name="description" type="string | null">
+  Event description.
+</ResponseField>
+
+<ResponseField name="startAt" type="string">
+  Event start date and time (ISO 8601 format).
+</ResponseField>
+
+<ResponseField name="endAt" type="string">
+  Event end date and time (ISO 8601 format).
+</ResponseField>
+
+<ResponseField name="bannerUrl" type="string | null">
+  URL to the event banner image.
+</ResponseField>
+
+<ResponseField name="locationUrl" type="string">
+  URL or address for the event location.
+</ResponseField>
+
+<ResponseField name="locationType" type="string">
+  Location type: `ONLINE` or `OFFLINE`.
+</ResponseField>
+
+<ResponseField name="requireApproval" type="boolean">
+  Whether registration requires organizer approval.
+</ResponseField>
+
+<ResponseField name="capacity" type="number">
+  Maximum number of attendees.
+</ResponseField>
+
+<ResponseField name="visibility" type="string">
+  Event visibility: `PUBLIC` or `PRIVATE`.
+</ResponseField>
+
+<ResponseField name="category" type="string">
+  Event category.
+  
+  **Possible values:**
+  - `TECH` - Technology
+  - `SCIENCE` - Science
+  - `MATH` - Mathematics
+  - `BIOLOGY` - Biology
+  - `SPORTS` - Sports
+  - `SOCIAL_SCIENCE` - Social Science
+  - `OTHER` - Other
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Event type.
+  
+  **Possible values:**
+  - `SEMINAR` - Seminar
+  - `WORKSHOP` - Workshop
+  - `COMPETITION` - Competition
+  - `BOOTCAMP` - Bootcamp
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  Event creation timestamp (ISO 8601 format).
+</ResponseField>
+
+<ResponseField name="peopleRegistered" type="array">
+  Array of registered users.
+  
+  <ResponseField name="id" type="string">
+    User ID.
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    User name.
+  </ResponseField>
+  
+  <ResponseField name="profilePictureUrl" type="string | null">
+    User profile picture URL.
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="organizers" type="array">
+  Array of event organizers.
+  
+  <ResponseField name="id" type="string">
+    User ID.
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    User name.
+  </ResponseField>
+  
+  <ResponseField name="profilePictureUrl" type="string | null">
+    User profile picture URL.
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  User-specific information (only included if authenticated).
+  
+  <ResponseField name="isOrganizer" type="boolean">
+    Whether the authenticated user is an organizer of this event.
+  </ResponseField>
+  
+  <ResponseField name="registration" type="object | null">
+    User's registration information for this event.
+    
+    <ResponseField name="id" type="string">
+      Registration ID.
+    </ResponseField>
+    
+    <ResponseField name="status" type="string">
+      Registration status.
+      
+      **Possible values:**
+      - `PENDING` - Awaiting approval
+      - `APPROVED` - Registration approved
+      - `REJECTED` - Registration rejected
+      - `WAITLIST` - On waitlist
+    </ResponseField>
+    
+    <ResponseField name="checkedInAt" type="string | null">
+      Check-in timestamp (ISO 8601 format).
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="string">
+      Registration creation timestamp (ISO 8601 format).
+    </ResponseField>
+  </ResponseField>
+</ResponseField>
+
+## Example Request
+
+```bash
+curl https://api.dragonhacks.com/events/clx1a2b3c4d5e6f7g8h9i0j1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Example Response
+
+```json
+{
+  "id": "clx1a2b3c4d5e6f7g8h9i0j1",
+  "name": "Introduction to React",
+  "description": "Learn the fundamentals of React.js in this hands-on workshop. We'll cover components, state management, and hooks.",
+  "startAt": "2026-04-15T14:00:00.000Z",
+  "endAt": "2026-04-15T17:00:00.000Z",
+  "bannerUrl": "https://storage.dragonhacks.com/events/banners/react-workshop.jpg",
+  "locationUrl": "https://zoom.us/j/123456789",
+  "locationType": "ONLINE",
+  "requireApproval": false,
+  "capacity": 50,
+  "visibility": "PUBLIC",
+  "category": "TECH",
+  "type": "WORKSHOP",
+  "createdAt": "2026-03-01T10:00:00.000Z",
+  "peopleRegistered": [
+    {
+      "id": "user_123",
+      "name": "Jane Doe",
+      "profilePictureUrl": "https://storage.dragonhacks.com/profiles/jane.jpg"
+    },
+    {
+      "id": "user_456",
+      "name": "John Smith",
+      "profilePictureUrl": null
+    }
+  ],
+  "organizers": [
+    {
+      "id": "org_789",
+      "name": "Sarah Johnson",
+      "profilePictureUrl": "https://storage.dragonhacks.com/profiles/sarah.jpg"
+    }
+  ],
+  "user": {
+    "isOrganizer": false,
+    "registration": {
+      "id": "reg_abc123",
+      "status": "APPROVED",
+      "checkedInAt": null,
+      "createdAt": "2026-03-10T15:30:00.000Z"
+    }
+  }
+}
+```
+
+## Error Responses
+
+<ResponseField name="404 Not Found">
+  Event with the specified ID does not exist.
+  
+  ```json
+  {
+    "code": "NOT_FOUND",
+    "message": "Event not found"
+  }
+  ```
+</ResponseField>

@@ -1,80 +1,301 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get the DragonHacks Event Platform running locally in minutes
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before you begin, ensure you have the following installed:
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- **Node.js** 18 or higher
+- **pnpm** 9.0.0 (required package manager)
+- **Docker** and **Docker Compose** (for Redis and MinIO)
+- **Git** for cloning the repository
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  The project uses pnpm as its package manager. Using npm or yarn may cause dependency resolution issues.
 </Note>
+
+## Installation
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the DragonHacks repository to your local machine:
+    
+    ```bash
+    git clone <repository-url>
+    cd dragonhacks-hackathon
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install all project dependencies using pnpm:
+    
+    ```bash
+    pnpm install
+    ```
+    
+    This will install dependencies for all apps in the monorepo (backend, frontend, whatsapp-bot).
+  </Step>
+
+  <Step title="Start Infrastructure Services">
+    Start Redis and MinIO using Docker Compose:
+    
+    ```bash
+    docker compose up -d
+    ```
+    
+    This starts:
+    - **Redis** on port 6379 (for job queues and caching)
+    - **MinIO** on port 9000 (S3-compatible storage)
+    - **MinIO Console** on port 9001 (web UI)
+    
+    <Info>
+      The MinIO console is available at http://localhost:9001 with credentials:
+      - Username: `minioAccessKey`
+      - Password: `minioSecretKey`
+    </Info>
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    Set up environment variables for each application:
+    
+    **Backend Configuration**
+    ```bash
+    cd apps/backend
+    cp .env.example .env
+    ```
+    
+    The default `.env` file includes:
+    ```bash apps/backend/.env
+    NODE_ENV="development"
+    DATABASE_URL="file:./dev.db"
+    PORT=3000
+    
+    BETTER_AUTH_SECRET="n1n3EzFokvnqOlX9T6c5vvDDtgiujVPs"
+    BETTER_AUTH_URL="http://localhost:3000"
+    
+    SERVER_URL="http://localhost:3000"
+    FRONTEND_URL="http://localhost:3001"
+    
+    S3_BUCKET="development"
+    S3_REGION="us-east-1"
+    S3_ENDPOINT="http://localhost:9000"
+    S3_ACCESS_KEY="minioAccessKey"
+    S3_SECRET_KEY="minioSecretKey"
+    
+    REDIS_HOST="localhost"
+    REDIS_PORT=6379
+    ```
+    
+    **WhatsApp Bot Configuration**
+    ```bash
+    cd ../whatsapp-bot
+    cp .env.example .env
+    ```
+    
+    Edit the WhatsApp bot `.env`:
+    ```bash apps/whatsapp-bot/.env
+    REDIS_HOST="localhost"
+    REDIS_PORT=6379
+    ```
+    
+    <Warning>
+      For production, generate a new `BETTER_AUTH_SECRET` using a cryptographically secure random generator.
+    </Warning>
+  </Step>
+
+  <Step title="Initialize the Database">
+    Set up the SQLite database with Prisma:
+    
+    ```bash
+    cd apps/backend
+    npx prisma migrate dev
+    ```
+    
+    Optionally, seed the database with sample data:
+    ```bash
+    pnpm db:seed
+    ```
+    
+    This creates the database schema with tables for:
+    - Users and authentication (User, Session, Account)
+    - Events and registrations (Event, EventRegistration, EventOrganizer)
+    - Announcements
+  </Step>
+
+  <Step title="Start the Development Servers">
+    From the root directory, start all applications:
+    
+    ```bash
+    pnpm dev
+    ```
+    
+    This uses Turborepo to run all development servers in parallel:
+    - **Backend**: http://localhost:3000
+    - **Frontend**: http://localhost:3001
+    - **WhatsApp Bot**: Background service
+    
+    <Info>
+      Turborepo will handle dependency ordering and run all apps concurrently with optimized caching.
+    </Info>
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Once all services are running, verify your setup:
+
+<AccordionGroup>
+  <Accordion title="Check Backend API">
+    The backend should be running at http://localhost:3000
+    
+    In development mode, the reference controller provides API documentation:
+    ```bash
+    curl http://localhost:3000/reference/openapi
+    ```
+    
+    This returns the OpenAPI specification for all oRPC routes.
+  </Accordion>
+
+  <Accordion title="Check Frontend">
+    Open http://localhost:3001 in your browser
+    
+    You should see the landing page with:
+    - Event discovery interface
+    - Sign in/Sign up options
+    - Navigation to create events
+  </Accordion>
+
+  <Accordion title="Check Infrastructure">
+    Verify Docker services are healthy:
+    ```bash
+    docker compose ps
+    ```
+    
+    All services should show status "Up"
+  </Accordion>
+</AccordionGroup>
+
+## Development Workflow
+
+### Running Individual Apps
+
+You can run specific apps using Turborepo filters:
+
+```bash
+# Run only the frontend
+pnpm --filter=frontend dev
+
+# Run only the backend
+pnpm --filter=backend dev
+
+# Run only the whatsapp-bot
+pnpm --filter=whatsapp-bot dev
+```
+
+### Building for Production
+
+Build all applications:
+```bash
+pnpm build
+```
+
+Build a specific app:
+```bash
+pnpm --filter=backend build
+```
+
+### Database Operations
+
+Common Prisma commands from `apps/backend`:
+
+```bash
+# Create a new migration
+npx prisma migrate dev --name add_new_feature
+
+# Reset the database
+npx prisma migrate reset
+
+# Open Prisma Studio (database GUI)
+npx prisma studio
+
+# Seed the database
+pnpm db:seed
+```
+
+### Code Quality
+
+Run linting and type checking:
+
+```bash
+# Lint all apps
+pnpm lint
+
+# Format code
+pnpm format
+
+# Type check
+pnpm check-types
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Port Already in Use">
+    If ports 3000, 3001, 6379, or 9000 are already in use:
+    
+    1. Stop the conflicting service
+    2. Or modify the ports in `.env` files and `docker-compose.yaml`
+    3. Update the `FRONTEND_URL` and `SERVER_URL` accordingly
+  </Accordion>
+
+  <Accordion title="Database Connection Issues">
+    If you see Prisma connection errors:
+    
+    ```bash
+    cd apps/backend
+    npx prisma generate
+    npx prisma migrate deploy
+    ```
+    
+    This regenerates the Prisma client and applies migrations.
+  </Accordion>
+
+  <Accordion title="Docker Services Not Starting">
+    Check Docker is running and has sufficient resources:
+    
+    ```bash
+    docker compose down
+    docker compose up -d
+    docker compose logs
+    ```
+  </Accordion>
+
+  <Accordion title="pnpm Installation Fails">
+    Clear the cache and reinstall:
+    
+    ```bash
+    pnpm store prune
+    rm -rf node_modules apps/*/node_modules
+    pnpm install
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="diagram-project" href="/architecture">
+    Learn how the platform components work together
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Explore the backend API endpoints
+  </Card>
+  <Card title="Frontend Guide" icon="browser" href="/frontend/overview">
+    Build UI components and pages
+  </Card>
+  <Card title="WhatsApp Bot" icon="message" href="/whatsapp/overview">
+    Configure WhatsApp notifications
+  </Card>
+</CardGroup>

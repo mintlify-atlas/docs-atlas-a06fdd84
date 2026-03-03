@@ -1,122 +1,129 @@
 {
   "$schema": "https://mintlify.com/docs.json",
+  "name": "DragonHacks Event Platform",
   "theme": "mint",
-  "name": "Mint Starter Kit",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#10b981",
+    "light": "#34d399",
+    "dark": "#059669"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/mraihanaf/dragonhacks-hackathon"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/mraihanaf/dragonhacks-hackathon"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "architecture"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Setup & Deployment",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "setup/prerequisites",
+              "setup/installation",
+              "setup/configuration",
+              "setup/database",
+              "setup/docker"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Core Features",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "features/authentication",
+              "features/events",
+              "features/registrations",
+              "features/announcements",
+              "features/whatsapp-notifications"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Frontend Development",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "frontend/overview",
+              "frontend/components",
+              "frontend/routing",
+              "frontend/state-management"
+            ]
+          },
+          {
+            "group": "Backend Development",
+            "pages": [
+              "backend/overview",
+              "backend/orpc-contracts",
+              "backend/modules",
+              "backend/database-schema"
+            ]
+          },
+          {
+            "group": "WhatsApp Bot",
+            "pages": [
+              "whatsapp/overview",
+              "whatsapp/baileys-integration",
+              "whatsapp/message-handlers"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api/introduction",
+              "api/authentication"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Users",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/users/get-me",
+              "api/users/get-by-id"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events/get-all",
+              "api/events/get-by-id",
+              "api/events/create",
+              "api/events/update",
+              "api/events/delete",
+              "api/events/banner-upload"
+            ]
+          },
+          {
+            "group": "Registrations",
+            "pages": [
+              "api/registrations/overview",
+              "api/registrations/create",
+              "api/registrations/check-in"
+            ]
+          },
+          {
+            "group": "Announcements",
+            "pages": [
+              "api/announcements/overview",
+              "api/announcements/create"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

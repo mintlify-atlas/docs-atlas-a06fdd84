@@ -1,0 +1,137 @@
+---
+title: Prerequisites
+description: System requirements and tools needed to run the DragonHacks Event Platform
+---
+
+Before setting up the DragonHacks Event Platform, ensure your development environment meets the following requirements.
+
+## System Requirements
+
+### Node.js
+
+The platform requires Node.js version 18 or higher.
+
+<CodeGroup>
+```bash npm
+node --version  # Should be >= 18.0.0
+```
+
+```bash yarn
+node --version  # Should be >= 18.0.0
+```
+
+```bash pnpm
+node --version  # Should be >= 18.0.0
+```
+</CodeGroup>
+
+If you need to install or update Node.js, visit [nodejs.org](https://nodejs.org/) or use a version manager like [nvm](https://github.com/nvm-sh/nvm).
+
+### Package Manager
+
+The project uses **pnpm 9.0.0** as its package manager. This is specified in the `package.json` and is required for proper workspace management in the Turborepo monorepo.
+
+<Steps>
+  <Step title="Install pnpm">
+    ```bash
+    npm install -g pnpm@9.0.0
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    pnpm --version  # Should output 9.0.0
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  While npm and yarn can be used for some commands, pnpm is strongly recommended for consistency with the project configuration.
+</Note>
+
+## Required Tools
+
+### Docker & Docker Compose
+
+Docker is required to run the platform's supporting services (Redis and MinIO).
+
+<Steps>
+  <Step title="Install Docker">
+    Download and install Docker Desktop from [docker.com](https://www.docker.com/products/docker-desktop/)
+  </Step>
+  
+  <Step title="Verify Docker installation">
+    ```bash
+    docker --version
+    docker compose version
+    ```
+  </Step>
+  
+  <Step title="Ensure Docker is running">
+    Start Docker Desktop and verify it's running:
+    ```bash
+    docker ps
+    ```
+  </Step>
+</Steps>
+
+### Git
+
+Git is required for version control and cloning the repository.
+
+```bash
+git --version  # Should be >= 2.0.0
+```
+
+## Optional Tools
+
+### TypeScript
+
+While TypeScript is included as a project dependency, you may want to install it globally for CLI access:
+
+```bash
+npm install -g typescript
+```
+
+### Prisma CLI
+
+Prisma is included as a dev dependency, but global installation can be convenient:
+
+```bash
+npm install -g prisma
+```
+
+### Turbo
+
+The Turborepo CLI can be installed globally for easier command execution:
+
+```bash
+npm install -g turbo
+```
+
+## Development Environment
+
+### Code Editor
+
+We recommend using [Visual Studio Code](https://code.visualstudio.com/) with the following extensions:
+
+- **Prisma** - Syntax highlighting and IntelliSense for Prisma schema files
+- **ESLint** - JavaScript/TypeScript linting
+- **Prettier** - Code formatting
+- **TypeScript** - Enhanced TypeScript support
+
+### Operating System
+
+The platform can be developed on:
+
+- **macOS** (recommended)
+- **Linux** (Ubuntu, Fedora, etc.)
+- **Windows** (with WSL2 for best compatibility)
+
+<Warning>
+  If using Windows, we strongly recommend using WSL2 (Windows Subsystem for Linux) for better compatibility with the development tooling.
+</Warning>
+
+## Next Steps
+
+Once you have all prerequisites installed, proceed to [Installation](/setup/installation) to clone and set up the project.

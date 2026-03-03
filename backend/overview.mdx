@@ -1,0 +1,177 @@
+---
+title: Backend Overview
+description: Architecture and setup of the DragonHacks backend using NestJS and oRPC
+---
+
+The DragonHacks backend is built with **NestJS** and uses **oRPC** for type-safe API contracts between frontend and backend.
+
+## Tech Stack
+
+- **NestJS** - Progressive Node.js framework
+- **oRPC** - Type-safe RPC framework with automatic client generation
+- **Prisma** - Type-safe database ORM
+- **SQLite** - Database (can be switched to PostgreSQL)
+- **BullMQ** - Queue management for async tasks
+- **Better Auth** - Authentication system
+
+## Project Structure
+
+```
+apps/backend/
+├── src/
+│   ├── app.module.ts          # Root module
+│   ├── contract.ts            # Main oRPC contract
+│   ├── auth/                  # Authentication module
+│   ├── users/                 # User management
+│   │   ├── users.contract.ts  # oRPC contract
+│   │   ├── users.schema.ts    # Zod schemas
+│   │   ├── users.service.ts   # Business logic
+│   │   ├── users.controller.ts # Route handlers
+│   │   └── users.module.ts    # Module definition
+│   ├── events/                # Event management
+│   │   ├── events.contract.ts
+│   │   ├── events.service.ts
+│   │   ├── registrations/     # Event registrations
+│   │   ├── organizers/        # Event organizers
+│   │   └── announcements/     # Event announcements
+│   ├── storage/               # File storage (S3)
+│   ├── email/                 # Email notifications
+│   ├── whatsapp/              # WhatsApp notifications
+│   ├── notification/          # Push notifications
+│   └── common/                # Shared utilities
+│       └── middleware/        # oRPC middleware
+├── prisma/
+│   └── schema.prisma          # Database schema
+└── package.json
+```
+
+## Module Architecture
+
+The backend follows NestJS module pattern. Each feature is organized as a module with:
+
+<CodeGroup>
+
+```typescript app.module.ts
+import { Module } from '@nestjs/common';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { ConfigModule } from '@nestjs/config';
+import { EmailModule } from './email/email.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { NotificationModule } from './notification/notification.module';
+import { EventsModule } from './events/events.module';
+import { StorageModule } from './storage/storage.module';
+import { UsersModule } from './users/users.module';
+import { ORPCModule } from '@orpc/nest';
+
+@Module({
+  imports: [
+    PrismaModule,
+    AuthModule,
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    ORPCModule.forRootAsync({
+      useFactory: (request: Request) => ({
+        context: {
+          request,
+        },
+        eventIteratorKeepAliveInterval: 5000,
+      }),
+      inject: [REQUEST],
+    }),
+    BullModule.forRootAsync({
+      useFactory: () => ({
+        connection: {
+          host: process.env.REDIS_HOST,
+          port: parseInt(process.env.REDIS_PORT!),
+        },
+      }),
+    }),
+    EmailModule,
+    WhatsappModule,
+    NotificationModule,
+    EventsModule,
+    StorageModule,
+    UsersModule,
+  ],
+})
+export class AppModule {}
+```
+
+```typescript users.module.ts
+import { Module } from '@nestjs/common';
+import { PrismaModule } from 'src/prisma/prisma.module';
+import { UsersService } from './users.service';
+import { UsersController } from './users.controller';
+
+@Module({
+  imports: [PrismaModule],
+  providers: [UsersService],
+  controllers: [UsersController]
+})
+export class UsersModule {}
+```
+
+</CodeGroup>
+
+## Global Context
+
+oRPC global context is extended to include request and session:
+
+```typescript src/app.module.ts:23
+declare module '@orpc/nest' {
+  interface ORPCGlobalContext {
+    request: Request;
+    session?: Awaited<ReturnType<typeof auth.api.getSession>>;
+  }
+}
+```
+
+## Environment Variables
+
+Create `.env` file in `apps/backend/`:
+
+```bash
+DATABASE_URL="file:./dev.db"
+REDIS_HOST="localhost"
+REDIS_PORT="6379"
+BETTER_AUTH_SECRET="your-secret-key"
+BETTER_AUTH_URL="http://localhost:3000"
+AWS_ACCESS_KEY_ID="your-aws-key"
+AWS_SECRET_ACCESS_KEY="your-aws-secret"
+AWS_REGION="us-east-1"
+S3_BUCKET_NAME="dragonhacks-uploads"
+```
+
+## Development
+
+```bash
+# Install dependencies
+pnpm install
+
+# Generate Prisma client
+pnpm prisma generate
+
+# Run migrations
+pnpm prisma migrate dev
+
+# Start development server
+pnpm dev
+```
+
+The backend runs on `http://localhost:3000` by default.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="oRPC Contracts" icon="handshake" href="/backend/orpc-contracts">
+    Learn how to define type-safe API contracts
+  </Card>
+  <Card title="Modules" icon="cube" href="/backend/modules">
+    Explore all available backend modules
+  </Card>
+  <Card title="Database Schema" icon="database" href="/backend/database-schema">
+    View the complete Prisma schema
+  </Card>
+</CardGroup>

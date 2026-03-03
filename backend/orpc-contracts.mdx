@@ -1,0 +1,402 @@
+---
+title: oRPC Contracts
+description: Type-safe API contracts using oRPC for DragonHacks platform
+---
+
+**oRPC** is a type-safe RPC framework that provides automatic client generation and runtime validation. It eliminates API synchronization issues between frontend and backend.
+
+## Why oRPC?
+
+- **Type Safety** - Full TypeScript inference from backend to frontend
+- **Automatic Validation** - Zod schemas validate requests/responses
+- **Auto-generated Client** - No manual API client code
+- **Middleware Support** - Reusable authentication and authorization
+- **OpenAPI Compatible** - Generate API documentation automatically
+
+## Contract Structure
+
+Contracts define the API shape using routes, inputs, and outputs:
+
+<CodeGroup>
+
+```typescript src/contract.ts
+import { usersContract } from "./users/users.contract";
+import { eventsContract } from "./events/events.contract";
+
+export const contract = {
+    users: usersContract,
+    events: eventsContract,
+};
+```
+
+```typescript src/users/users.contract.ts
+import { oc } from "@orpc/contract"
+import { getByIdInputSchema, userSchema } from "./users.schema"
+
+const getById = oc.route({
+    path: "/users/{id}",
+    method: "GET",
+    tags: ["Users"]
+}).input(getByIdInputSchema).output(userSchema)
+
+const getMe = oc.route({
+    path: "/users/me",
+    method: "GET",
+    tags: ["Users"]
+}).output(userSchema)
+
+export const usersContract = {
+    getById,
+    getMe,
+}
+```
+
+</CodeGroup>
+
+## Zod Schemas
+
+Define input and output schemas using Zod:
+
+```typescript src/users/users.schema.ts
+import z from "zod/v4";
+
+export const userSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    image: z.string().nullable(),
+    createdAt: z.date(),
+})
+
+export const getByIdInputSchema = z.object({
+    id: z.string(),
+})
+```
+
+## Implementing Routes
+
+Use `@Implement` decorator and `implement()` helper in controllers:
+
+```typescript src/users/users.controller.ts
+import { Controller } from '@nestjs/common';
+import { UsersService } from './users.service';
+import { Implement, implement } from '@orpc/nest';
+import { contract } from 'src/contract';
+import { ORPCError } from '@orpc/server';
+import { protectedRoute } from 'src/common/middleware/protectedRoute';
+
+@Controller('')
+export class UsersController {
+    constructor(private readonly usersService: UsersService) {}
+
+    @Implement(contract.users.getById)
+    async getById() {
+        return implement(contract.users.getById).handler(async ({ input }) => {
+            const user = await this.usersService.getById(input.id)
+            if (!user) {
+                throw new ORPCError('NOT_FOUND')
+            }
+            return user
+        })
+    }
+
+    @Implement(contract.users.getMe)
+    async getMe() {
+        return implement(contract.users.getMe)
+            .use(protectedRoute)
+            .handler(async ({ context }) => {
+                const user = await this.usersService.getById(
+                    context.session!.user.id
+                )
+                if (!user) {
+                    throw new ORPCError('NOT_FOUND')
+                }
+                return user
+            })
+    }
+}
+```
+
+## Middleware
+
+Create reusable middleware for authentication:
+
+```typescript src/common/middleware/protectedRoute.ts
+import { ORPCGlobalContext } from '@orpc/nest';
+import { ORPCError, os } from '@orpc/server';
+import { auth } from 'src/auth/auth';
+
+export const protectedRoute = os
+  .$context<ORPCGlobalContext>()
+  .middleware(async ({ context, next }) => {
+    const session = await auth.api.getSession({
+      headers: context.request.headers,
+    });
+    if (!session) throw new ORPCError('UNAUTHORIZED');
+    context.session = session;
+    return next();
+  });
+```
+
+Usage:
+
+```typescript
+import { protectedRoute } from 'src/common/middleware/protectedRoute';
+
+@Implement(contract.users.getMe)
+async getMe() {
+    return implement(contract.users.getMe)
+        .use(protectedRoute)  // Requires authentication
+        .handler(async ({ context }) => {
+            // context.session is now available and typed
+            const userId = context.session!.user.id;
+            // ...
+        })
+}
+```
+
+## Events Contract Example
+
+```typescript src/events/events.contract.ts
+import { oc } from "@orpc/contract"
+import { 
+    createInputSchema, 
+    deleteByIdInputSchema, 
+    getAllInputSchema, 
+    getAllOutputSchema, 
+    getByIdInputSchema, 
+    getByIdOutputSchema, 
+    updateByIdInputSchema 
+} from "./events.schema"
+import { registrationsContract } from "./registrations/registrations.contract"
+import { organizersContract } from "./organizers/organizers.contract"
+import { announcementsContract } from "./announcements/announcements.contract"
+
+const getById = oc.route({
+    path: "/events/{id}",
+    method: "GET",
+    tags: ["Events"]
+}).input(getByIdInputSchema).output(getByIdOutputSchema)
+
+const getAll = oc.route({
+    path: "/events",
+    method: "GET",
+    tags: ["Events"]
+}).input(getAllInputSchema).output(getAllOutputSchema)
+
+const create = oc.route({
+    path: "/events",
+    method: "POST",
+    tags: ["Events"]
+}).input(createInputSchema)
+
+const updateById = oc.route({
+    path: "/events/{id}",
+    method: "PUT",
+    tags: ["Events"]
+}).input(updateByIdInputSchema)
+
+const deleteById = oc.route({
+    path: "/events",
+    method: "DELETE",
+    tags: ["Events"]
+}).input(deleteByIdInputSchema)
+
+export const eventsContract = {
+    getById,
+    getAll,
+    create,
+    updateById,
+    deleteById,
+    registrations: registrationsContract,
+    organizers: organizersContract,
+    announcements: announcementsContract,
+}
+```
+
+## Nested Contracts
+
+Contracts can be nested for better organization:
+
+```typescript src/events/registrations/registrations.contract.ts
+import { oc } from "@orpc/contract"
+
+const register = oc.route({
+    path: "/events/{eventId}/registrations",
+    method: "POST",
+    tags: ["Registrations"],
+}).input(eventIdInputSchema).output(registerOutputSchema)
+
+const unregister = oc.route({
+    path: "/events/{eventId}/registrations",
+    method: "DELETE",
+    tags: ["Registrations"],
+}).input(eventIdInputSchema)
+
+const approveRegistration = oc.route({
+    path: "/events/{eventId}/registrations/{registrationId}/approve",
+    method: "POST",
+    tags: ["Registrations"],
+}).input(eventIdRegistrationIdInputSchema)
+
+export const registrationsContract = {
+    register,
+    unregister,
+    approveRegistration,
+    rejectRegistration,
+    registerAttandance,
+    unregisterAttandance,
+    getAllRegistrationsByEventId,
+}
+```
+
+Used in parent contract:
+
+```typescript
+export const eventsContract = {
+    getById,
+    getAll,
+    create,
+    registrations: registrationsContract,  // Nested contract
+    organizers: organizersContract,
+    announcements: announcementsContract,
+}
+```
+
+## Creating New Endpoints
+
+Follow these steps to add a new endpoint:
+
+### 1. Define Schema
+
+```typescript src/users/users.schema.ts
+export const updateProfileInputSchema = z.object({
+    name: z.string().min(1),
+    phoneNumber: z.string().optional(),
+    birthday: z.date().optional(),
+})
+```
+
+### 2. Add to Contract
+
+```typescript src/users/users.contract.ts
+const updateProfile = oc.route({
+    path: "/users/me",
+    method: "PUT",
+    tags: ["Users"]
+}).input(updateProfileInputSchema).output(userSchema)
+
+export const usersContract = {
+    getById,
+    getMe,
+    updateProfile,  // New endpoint
+}
+```
+
+### 3. Implement in Service
+
+```typescript src/users/users.service.ts
+async updateProfile(userId: string, data: {
+    name: string;
+    phoneNumber?: string;
+    birthday?: Date;
+}) {
+    return this.prismaService.user.update({
+        where: { id: userId },
+        data,
+        select: {
+            id: true,
+            name: true,
+            image: true,
+            createdAt: true,
+        },
+    })
+}
+```
+
+### 4. Implement in Controller
+
+```typescript src/users/users.controller.ts
+@Implement(contract.users.updateProfile)
+async updateProfile() {
+    return implement(contract.users.updateProfile)
+        .use(protectedRoute)
+        .handler(async ({ context, input }) => {
+            return this.usersService.updateProfile(
+                context.session!.user.id,
+                input
+            )
+        })
+}
+```
+
+### 5. Use in Frontend
+
+The client is auto-generated:
+
+```typescript frontend/lib/api.ts
+import { contract } from 'backend/src/contract';
+import { createClient } from '@orpc/client';
+
+const client = createClient<typeof contract>({
+    baseURL: 'http://localhost:3000',
+});
+
+// Fully typed!
+await client.users.updateProfile({
+    name: 'John Doe',
+    phoneNumber: '+1234567890',
+});
+```
+
+## Error Handling
+
+Use `ORPCError` for standardized errors:
+
+```typescript
+import { ORPCError } from '@orpc/server';
+
+if (!user) {
+    throw new ORPCError('NOT_FOUND')
+}
+
+if (!isOrganizer) {
+    throw new ORPCError('FORBIDDEN')
+}
+
+if (invalidInput) {
+    throw new ORPCError('BAD_REQUEST', {
+        message: 'Invalid input provided'
+    })
+}
+```
+
+Available error codes:
+- `UNAUTHORIZED` - 401
+- `FORBIDDEN` - 403
+- `NOT_FOUND` - 404
+- `BAD_REQUEST` - 400
+- `INTERNAL_SERVER_ERROR` - 500
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep schemas close to contracts">
+    Store schemas in the same directory as contracts for easy maintenance.
+  </Accordion>
+  
+  <Accordion title="Use descriptive names">
+    Name schemas with `InputSchema` or `OutputSchema` suffix for clarity.
+  </Accordion>
+  
+  <Accordion title="Reuse middleware">
+    Create reusable middleware for common patterns like authentication.
+  </Accordion>
+  
+  <Accordion title="Validate at contract level">
+    Use Zod schemas for all validation - don't duplicate in service layer.
+  </Accordion>
+  
+  <Accordion title="Type everything">
+    Leverage TypeScript inference - avoid `any` types.
+  </Accordion>
+</AccordionGroup>

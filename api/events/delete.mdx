@@ -1,0 +1,81 @@
+---
+title: 'Delete Event'
+api: 'DELETE /events'
+---
+
+Delete an existing event. Only event organizers can delete their events.
+
+## Authentication
+
+Required. You must be an organizer of the event to delete it.
+
+## Request Body
+
+<ParamField body="id" type="string" required>
+  The unique identifier of the event to delete.
+</ParamField>
+
+## Response
+
+Returns `204 No Content` on success.
+
+## Example Request
+
+```bash
+curl -X DELETE https://api.dragonhacks.com/events \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "clx1a2b3c4d5e6f7g8h9i0j1"
+  }'
+```
+
+## Example Response
+
+```
+204 No Content
+```
+
+## Error Responses
+
+<ResponseField name="401 Unauthorized">
+  Missing or invalid authentication token.
+  
+  ```json
+  {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="403 Forbidden">
+  You are not an organizer of this event.
+  
+  ```json
+  {
+    "code": "FORBIDDEN",
+    "message": "You do not have permission to delete this event"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="404 Not Found">
+  Event with the specified ID does not exist.
+  
+  ```json
+  {
+    "code": "NOT_FOUND",
+    "message": "Event not found"
+  }
+  ```
+</ResponseField>
+
+## Notes
+
+- Only event organizers can delete events
+- Deleting an event will cascade delete all related data:
+  - Event organizers
+  - Event registrations
+  - Event announcements
+- This action cannot be undone

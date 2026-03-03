@@ -1,0 +1,74 @@
+---
+title: 'Get Current User'
+api: 'GET /users/me'
+---
+
+Retrieves the authenticated user's profile information.
+
+## Authentication
+
+This endpoint requires authentication. The user must be logged in with a valid session.
+
+## Request
+
+No parameters required.
+
+### Example Request
+
+```bash cURL
+curl -X GET https://api.dragonhacks.com/users/me \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+## Response
+
+Returns a user object for the authenticated user.
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the user
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  The user's display name
+</ResponseField>
+
+<ResponseField name="image" type="string | null" required>
+  URL to the user's profile image. Can be null if no image is set.
+</ResponseField>
+
+<ResponseField name="createdAt" type="date" required>
+  Timestamp when the user account was created
+</ResponseField>
+
+### Example Response
+
+```json 200 - Success
+{
+  "id": "clx1234567890abcdef",
+  "name": "Jane Doe",
+  "image": "https://cdn.dragonhacks.com/avatars/jane-doe.jpg",
+  "createdAt": "2024-01-15T10:30:00.000Z"
+}
+```
+
+```json 401 - Unauthorized
+{
+  "code": "UNAUTHORIZED",
+  "message": "Authentication required"
+}
+```
+
+```json 404 - Not Found
+{
+  "code": "NOT_FOUND",
+  "message": "User not found"
+}
+```
+
+## Error Responses
+
+| Status Code | Error Code | Description |
+|------------|------------|-------------|
+| 401 | UNAUTHORIZED | User is not authenticated |
+| 404 | NOT_FOUND | User account no longer exists |

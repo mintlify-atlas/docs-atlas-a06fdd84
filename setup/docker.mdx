@@ -1,0 +1,424 @@
+---
+title: Docker Setup
+description: Configure and run Docker services for Redis and MinIO
+---
+
+The DragonHacks Event Platform uses Docker Compose to manage local development services. This guide covers setting up and managing Redis (for queues) and MinIO (for S3-compatible object storage).
+
+## Docker Services Overview
+
+The platform requires two services defined in `docker-compose.yaml`:
+
+1. **Redis** - Message queue and caching (BullMQ)
+2. **MinIO** - S3-compatible object storage for file uploads
+
+## Prerequisites
+
+Ensure Docker and Docker Compose are installed:
+
+```bash
+docker --version
+docker compose version
+```
+
+If not installed, see [Prerequisites](/setup/prerequisites) for installation instructions.
+
+## Starting Services
+
+<Steps>
+  <Step title="Navigate to project root">
+    ```bash
+    cd dragonhacks-hackathon
+    ```
+  </Step>
+  
+  <Step title="Start all services">
+    ```bash
+    docker compose up -d
+    ```
+    
+    The `-d` flag runs containers in detached mode (background).
+  </Step>
+  
+  <Step title="Verify services are running">
+    ```bash
+    docker compose ps
+    ```
+    
+    You should see:
+    - `redis` - Running on port 6379
+    - `minio` - Running on ports 9000 (API) and 9001 (Console)
+    - `createbuckets` - Completed (creates initial bucket)
+  </Step>
+</Steps>
+
+## Redis Configuration
+
+### Service Details
+
+```yaml
+redis:
+  image: redis:7.2
+  container_name: redis
+  command: >
+    redis-server
+    --bind 0.0.0.0
+    --port 6379
+    --maxmemory 1gb
+    --maxmemory-policy noeviction
+  ports:
+    - "6379:6379"
+```
+
+### Configuration Options
+
+- **Image**: Redis 7.2 official image
+- **Port**: 6379 (standard Redis port)
+- **Max Memory**: 1GB
+- **Eviction Policy**: No eviction (returns errors when memory is full)
+
+### Connecting to Redis
+
+The backend connects to Redis using environment variables:
+
+```bash
+REDIS_HOST="localhost"
+REDIS_PORT=6379
+```
+
+### Testing Redis Connection
+
+Connect using the Redis CLI:
+
+```bash
+docker exec -it redis redis-cli
+```
+
+Test basic commands:
+
+```bash
+PING  # Should return PONG
+SET test "Hello"
+GET test  # Should return "Hello"
+```
+
+Type `exit` to close the Redis CLI.
+
+## MinIO Configuration
+
+### Service Details
+
+```yaml
+minio:
+  image: minio/minio
+  environment:
+    - MINIO_ROOT_USER=minioAccessKey
+    - MINIO_ROOT_PASSWORD=minioSecretKey
+  command: [ "server", "--console-address", ":9001", "/data" ]
+  volumes:
+    - ./data/minio:/data:z
+  ports:
+    - "9000:9000"  # API
+    - "9001:9001"  # Console
+```
+
+### Ports
+
+- **9000** - MinIO API (S3-compatible endpoint)
+- **9001** - MinIO Console (web UI)
+
+### Credentials
+
+- **Access Key**: `minioAccessKey`
+- **Secret Key**: `minioSecretKey`
+
+<Warning>
+  These default credentials should only be used for local development. Change them for production deployments!
+</Warning>
+
+### Data Persistence
+
+MinIO data is persisted to `./data/minio` on your host machine. This directory is created automatically.
+
+### MinIO Console
+
+Access the MinIO web interface at [http://localhost:9001](http://localhost:9001)
+
+<Steps>
+  <Step title="Open MinIO Console">
+    Navigate to http://localhost:9001 in your browser
+  </Step>
+  
+  <Step title="Login">
+    - **Username**: `minioAccessKey`
+    - **Password**: `minioSecretKey`
+  </Step>
+  
+  <Step title="Explore buckets">
+    View the `development` bucket created automatically
+  </Step>
+</Steps>
+
+### Bucket Creation
+
+The `createbuckets` service automatically creates the initial development bucket:
+
+```yaml
+createbuckets:
+  image: minio/mc
+  depends_on:
+    - minio
+  entrypoint: >
+    /bin/sh -c "
+    sleep 5;
+    /usr/bin/mc alias set dockerminio http://minio:9000 minioAccessKey minioSecretKey;
+    /usr/bin/mc mb dockerminio/development || true;
+    exit 0;
+    "
+```
+
+This service:
+1. Waits for MinIO to start (5 second delay)
+2. Configures MinIO connection
+3. Creates `development` bucket if it doesn't exist
+4. Exits after completion
+
+## Managing Services
+
+### View Logs
+
+View logs for all services:
+
+```bash
+docker compose logs -f
+```
+
+View logs for a specific service:
+
+```bash
+docker compose logs -f redis
+docker compose logs -f minio
+```
+
+Press `Ctrl+C` to stop following logs.
+
+### Stop Services
+
+Stop all services (preserves data):
+
+```bash
+docker compose stop
+```
+
+Stop a specific service:
+
+```bash
+docker compose stop redis
+docker compose stop minio
+```
+
+### Restart Services
+
+Restart all services:
+
+```bash
+docker compose restart
+```
+
+Restart a specific service:
+
+```bash
+docker compose restart redis
+docker compose restart minio
+```
+
+### Stop and Remove Services
+
+Stop and remove containers (preserves volumes):
+
+```bash
+docker compose down
+```
+
+Remove containers and volumes (deletes data):
+
+<Warning>
+  This will delete all data in Redis and MinIO!
+</Warning>
+
+```bash
+docker compose down -v
+```
+
+### Rebuild Services
+
+If you update `docker-compose.yaml`:
+
+```bash
+docker compose up -d --build
+```
+
+## Service Health Checks
+
+### Redis Health Check
+
+```bash
+docker exec redis redis-cli ping
+```
+
+Expected output: `PONG`
+
+### MinIO Health Check
+
+```bash
+curl http://localhost:9000/minio/health/live
+```
+
+Or visit the MinIO Console at http://localhost:9001
+
+### Check Running Containers
+
+```bash
+docker compose ps
+```
+
+All services should show `Up` status.
+
+## Backend Integration
+
+Ensure your backend `.env` file matches the Docker service configuration:
+
+### Redis Connection
+
+```bash
+REDIS_HOST="localhost"
+REDIS_PORT=6379
+```
+
+### MinIO/S3 Connection
+
+```bash
+S3_BUCKET="development"
+S3_REGION="us-east-1"
+S3_ENDPOINT="http://localhost:9000"
+S3_ACCESS_KEY="minioAccessKey"
+S3_SECRET_KEY="minioSecretKey"
+```
+
+## Troubleshooting
+
+### Port Conflicts
+
+If ports 6379, 9000, or 9001 are already in use:
+
+<Steps>
+  <Step title="Check what's using the port">
+    ```bash
+    lsof -i :6379
+    lsof -i :9000
+    lsof -i :9001
+    ```
+  </Step>
+  
+  <Step title="Stop conflicting service">
+    Stop the conflicting service or modify `docker-compose.yaml` to use different ports
+  </Step>
+  
+  <Step title="Update backend configuration">
+    If you change ports, update your backend `.env` file accordingly
+  </Step>
+</Steps>
+
+### MinIO Bucket Not Created
+
+If the development bucket doesn't exist:
+
+```bash
+# Manual bucket creation using mc client
+docker run --rm -it --network=host minio/mc \
+  alias set local http://localhost:9000 minioAccessKey minioSecretKey
+
+docker run --rm -it --network=host minio/mc \
+  mb local/development
+```
+
+### Redis Connection Refused
+
+If the backend can't connect to Redis:
+
+<Steps>
+  <Step title="Verify Redis is running">
+    ```bash
+    docker compose ps redis
+    ```
+  </Step>
+  
+  <Step title="Check Redis logs">
+    ```bash
+    docker compose logs redis
+    ```
+  </Step>
+  
+  <Step title="Test connection">
+    ```bash
+    docker exec redis redis-cli ping
+    ```
+  </Step>
+</Steps>
+
+### Data Persistence Issues
+
+If MinIO data is lost after restart:
+
+```bash
+# Check volume mount
+ls -la ./data/minio
+
+# Ensure proper permissions
+sudo chown -R $(id -u):$(id -g) ./data/minio
+```
+
+### Container Won't Start
+
+If services fail to start:
+
+```bash
+# View detailed error logs
+docker compose logs
+
+# Remove and recreate containers
+docker compose down
+docker compose up -d
+```
+
+## Production Considerations
+
+For production deployments:
+
+<Warning>
+  The provided `docker-compose.yaml` is designed for local development only.
+</Warning>
+
+### Redis Production Setup
+
+- Use Redis Cluster for high availability
+- Configure persistence (AOF or RDB)
+- Set up authentication with `requirepass`
+- Configure maxmemory and eviction policies
+- Use dedicated hosting (AWS ElastiCache, Redis Cloud, etc.)
+
+### MinIO Production Setup
+
+- Use strong, unique credentials
+- Enable TLS/HTTPS
+- Configure distributed mode for redundancy
+- Set up proper backup strategies
+- Consider managed S3 (AWS S3, DigitalOcean Spaces, etc.)
+
+## Next Steps
+
+With Docker services running, you can now:
+
+1. [Initialize the database](/setup/database) with Prisma
+2. Start the backend application: `pnpm dev`
+3. Begin development with full service support

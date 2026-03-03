@@ -1,0 +1,368 @@
+---
+title: 'Create & Manage Registrations'
+description: 'Register for events, cancel registrations, and manage approvals'
+---
+
+## Register for Event
+
+<Note>
+  Registration status depends on the event's `requireApproval` setting. If `false`, registration is automatically approved. If `true`, it will be pending until an organizer approves it.
+</Note>
+
+Creates a new registration for the authenticated user.
+
+<CodeGroup>
+```typescript POST /events/{eventId}/registrations
+import { client } from './client'
+
+const registration = await client.events.registrations.register({
+  eventId: 'clx1234567890abcdef'
+})
+
+console.log(registration)
+// {
+//   id: 'reg_abc123',
+//   status: 'APPROVED' // or 'PENDING' if requireApproval is true
+// }
+```
+
+```bash cURL
+curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="eventId" type="string" required>
+  The unique identifier of the event to register for
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string" required>
+  The unique identifier for the registration
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  The registration status. One of: `PENDING`, `APPROVED`, `REJECTED`, `WAITLIST`
+  
+  - `APPROVED`: Registration is confirmed (auto-approved when `requireApproval: false`)
+  - `PENDING`: Awaiting organizer approval (when `requireApproval: true`)
+</ResponseField>
+
+### Registration Logic
+
+<Steps>
+  <Step title="Check Event Exists">
+    Verifies the event exists and loads capacity and approval settings
+  </Step>
+  
+  <Step title="Check Permissions">
+    - Event organizers cannot register for their own events
+    - User cannot register twice for the same event
+  </Step>
+  
+  <Step title="Check Capacity">
+    If `requireApproval: false` and capacity is reached, registration fails with `Event at capacity` error
+  </Step>
+  
+  <Step title="Create Registration">
+    - Status is `APPROVED` if `requireApproval: false`
+    - Status is `PENDING` if `requireApproval: true`
+  </Step>
+  
+  <Step title="Schedule Reminder">
+    If auto-approved, schedules an event reminder notification for 1 day before the event
+  </Step>
+</Steps>
+
+### Errors
+
+- `404 NOT_FOUND`: Event does not exist
+- `403 FORBIDDEN`: User is an organizer of this event
+- `400 BAD_REQUEST`: Already registered or event at capacity
+
+### Example Response
+
+```json
+{
+  "id": "reg_clx9876543210zyxwvu",
+  "status": "APPROVED"
+}
+```
+
+---
+
+## Unregister
+
+Cancels a registration for the authenticated user.
+
+<CodeGroup>
+```typescript DELETE /events/{eventId}/registrations
+import { client } from './client'
+
+await client.events.registrations.unregister({
+  eventId: 'clx1234567890abcdef'
+})
+
+// No response body on success
+```
+
+```bash cURL
+curl -X DELETE https://api.dragonhacks.io/events/clx1234567890abcdef/registrations \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="eventId" type="string" required>
+  The unique identifier of the event to unregister from
+</ParamField>
+
+### Response
+
+Returns no content on success. Any scheduled event reminders are automatically cancelled.
+
+### Errors
+
+- `404 NOT_FOUND`: Registration does not exist
+
+---
+
+## Approve Registration
+
+<Note>
+  Requires organizer permissions. Only `PENDING` and `WAITLIST` registrations can be approved.
+</Note>
+
+Approves a pending registration, changing its status to `APPROVED`.
+
+<CodeGroup>
+```typescript POST /events/{eventId}/registrations/{registrationId}/approve
+import { client } from './client'
+
+await client.events.registrations.approveRegistration({
+  eventId: 'clx1234567890abcdef',
+  registrationId: 'reg_abc123'
+})
+
+// Sends approval notification to user
+// Schedules event reminder for 1 day before event
+```
+
+```bash cURL
+curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/approve \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="eventId" type="string" required>
+  The unique identifier of the event
+</ParamField>
+
+<ParamField path="registrationId" type="string" required>
+  The unique identifier of the registration to approve
+</ParamField>
+
+### Response
+
+Returns no content on success. The registration status is updated to `APPROVED` and:
+
+- User receives a notification: "You're in! Registration approved for [Event Name]"
+- Event reminder is scheduled for 1 day before the event starts
+
+### Errors
+
+- `404 NOT_FOUND`: Event or registration does not exist, or registration is not in `PENDING`/`WAITLIST` status
+- `403 FORBIDDEN`: User is not an organizer of this event
+- `400 BAD_REQUEST`: Event is at capacity
+
+---
+
+## Reject Registration
+
+<Note>
+  Requires organizer permissions. Only `PENDING` and `WAITLIST` registrations can be rejected.
+</Note>
+
+Rejects a pending registration, changing its status to `REJECTED`.
+
+<CodeGroup>
+```typescript POST /events/{eventId}/registrations/{registrationId}/reject
+import { client } from './client'
+
+await client.events.registrations.rejectRegistration({
+  eventId: 'clx1234567890abcdef',
+  registrationId: 'reg_abc123'
+})
+```
+
+```bash cURL
+curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/reject \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="eventId" type="string" required>
+  The unique identifier of the event
+</ParamField>
+
+<ParamField path="registrationId" type="string" required>
+  The unique identifier of the registration to reject
+</ParamField>
+
+### Response
+
+Returns no content on success. The registration status is updated to `REJECTED`.
+
+### Errors
+
+- `404 NOT_FOUND`: Event or registration does not exist, or registration is not in `PENDING`/`WAITLIST` status
+- `403 FORBIDDEN`: User is not an organizer of this event
+
+---
+
+## List Registrations
+
+<Note>
+  Requires organizer permissions. Returns all registrations for an event with pagination.
+</Note>
+
+Retrieves all registrations for an event, ordered by creation date (newest first).
+
+<CodeGroup>
+```typescript GET /events/{eventId}/registrations
+import { client } from './client'
+
+const result = await client.events.registrations.getAllRegistrationsByEventId({
+  eventId: 'clx1234567890abcdef',
+  limit: 20,
+  cursor: undefined // or provide cursor from previous response
+})
+
+console.log(result.items.length) // Up to 20 registrations
+console.log(result.hasNextPage) // true if more results available
+
+if (result.hasNextPage) {
+  // Fetch next page
+  const nextPage = await client.events.registrations.getAllRegistrationsByEventId({
+    eventId: 'clx1234567890abcdef',
+    cursor: result.nextCursor
+  })
+}
+```
+
+```bash cURL
+curl -X GET "https://api.dragonhacks.io/events/clx1234567890abcdef/registrations?limit=20" \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="eventId" type="string" required>
+  The unique identifier of the event
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="limit" type="number" default="20">
+  Number of registrations to return per page (max 100)
+</ParamField>
+
+<ParamField query="cursor" type="string">
+  Cursor for pagination. Use the `nextCursor` value from the previous response.
+</ParamField>
+
+### Response
+
+<ResponseField name="items" type="array" required>
+  Array of registration objects
+  
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The unique identifier for the registration
+    </ResponseField>
+    
+    <ResponseField name="status" type="string" required>
+      Registration status: `PENDING`, `APPROVED`, `REJECTED`, or `WAITLIST`
+    </ResponseField>
+    
+    <ResponseField name="checkedInAt" type="datetime | null" required>
+      Timestamp when the user was checked in, or `null` if not checked in
+    </ResponseField>
+    
+    <ResponseField name="user" type="object" required>
+      User information
+      
+      <Expandable title="properties">
+        <ResponseField name="id" type="string" required>
+          User's unique identifier
+        </ResponseField>
+        
+        <ResponseField name="name" type="string" required>
+          User's display name
+        </ResponseField>
+        
+        <ResponseField name="profilePictureUrl" type="string | null" required>
+          User's profile picture URL, or `null` if not set
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="datetime" required>
+      When the registration was created
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string">
+  Cursor for fetching the next page. Undefined if no more results.
+</ResponseField>
+
+<ResponseField name="hasNextPage" type="boolean" required>
+  Whether there are more results available
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "items": [
+    {
+      "id": "reg_clx9876543210zyxwvu",
+      "status": "APPROVED",
+      "checkedInAt": "2026-03-03T14:30:00.000Z",
+      "user": {
+        "id": "user_abc123",
+        "name": "Alice Johnson",
+        "profilePictureUrl": "https://cdn.dragonhacks.io/avatars/alice.jpg"
+      },
+      "createdAt": "2026-02-15T10:00:00.000Z"
+    },
+    {
+      "id": "reg_clx1111222233334444",
+      "status": "PENDING",
+      "checkedInAt": null,
+      "user": {
+        "id": "user_def456",
+        "name": "Bob Smith",
+        "profilePictureUrl": null
+      },
+      "createdAt": "2026-02-14T16:45:00.000Z"
+    }
+  ],
+  "nextCursor": "reg_clx5555666677778888",
+  "hasNextPage": true
+}
+```
+
+### Errors
+
+- `403 FORBIDDEN`: User is not an organizer of this event

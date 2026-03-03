@@ -1,0 +1,108 @@
+---
+title: 'WhatsApp Bot Overview'
+description: 'Learn about the WhatsApp Bot service that handles event notifications and OTP delivery'
+---
+
+The WhatsApp Bot is a NestJS-based service that integrates with WhatsApp using the Baileys library to send notifications, OTP codes, and handle incoming messages from event participants.
+
+## Architecture
+
+The WhatsApp Bot service is built with the following components:
+
+- **Baileys Library**: Open-source WhatsApp Web API implementation
+- **BullMQ**: Queue system for processing outbound messages
+- **Redis**: Message queue backend
+- **NestJS**: Application framework providing dependency injection and modular architecture
+
+## Key Features
+
+### Message Sending
+
+The bot can send two types of messages via BullMQ queues:
+
+1. **OTP Messages**: One-time passwords for user authentication
+2. **General Messages**: Event notifications and updates
+
+### Message Handling
+
+The bot listens for incoming WhatsApp messages and can respond to commands using custom decorators:
+
+- Event-based handlers using `@On()` decorator
+- Message pattern matching with `@MessageStartsWith()` decorator
+
+### QR Code Authentication
+
+The bot uses WhatsApp Web's QR code authentication flow, displaying a QR code in the terminal for initial setup.
+
+## Application Structure
+
+```typescript
+// apps/whatsapp-bot/src/app.module.ts:8
+@Module({
+  imports: [
+    BaileysModule,
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+
+    BullModule.forRoot({
+      connection: {
+        host: process.env.REDIS_HOST,
+        port: parseInt(process.env.REDIS_PORT!),
+      },
+    }),
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
+```
+
+The application initializes as a standalone context without HTTP endpoints:
+
+```typescript
+// apps/whatsapp-bot/src/main.ts:4
+async function bootstrap() {
+  const app = await NestFactory.createApplicationContext(AppModule);
+  await app.init();
+}
+```
+
+## Environment Variables
+
+The following environment variables are required:
+
+| Variable | Description | Example |
+|----------|-------------|----------|
+| `REDIS_HOST` | Redis server hostname | `localhost` |
+| `REDIS_PORT` | Redis server port | `6379` |
+
+## Module Structure
+
+The Baileys module provides the core WhatsApp functionality:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.module.ts:7
+@Module({
+  imports: [
+    DiscoveryModule,
+    BullModule.registerQueue({
+      name: 'whatsapp',
+    }),
+  ],
+  providers: [BaileysService, BaileysProcessor],
+  exports: [BaileysService, BaileysProcessor],
+})
+export class BaileysModule {}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Baileys Integration" icon="plug" href="/whatsapp/baileys-integration">
+    Learn how the Baileys library is integrated and configured
+  </Card>
+  <Card title="Message Handlers" icon="message" href="/whatsapp/message-handlers">
+    Understand the message handling system and custom decorators
+  </Card>
+</CardGroup>

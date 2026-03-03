@@ -1,0 +1,195 @@
+---
+title: Frontend Overview
+description: Architecture and technology stack for the DragonHacks Event Platform frontend
+---
+
+## Architecture
+
+The DragonHacks Event Platform frontend is built with **Next.js 16** using the App Router and **React 19**, delivering a modern, performant web application for discovering and managing hackathon events.
+
+### Technology Stack
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Next.js | 16.1.6 | React framework with App Router |
+| React | 19.2.3 | UI library with React Compiler |
+| TypeScript | 5.x | Type-safe development |
+| Tailwind CSS | 4.x | Utility-first styling |
+| oRPC | 1.13.5 | Type-safe API client |
+| Tanstack Query | 5.90.21 | Server state management |
+| Better Auth | 1.4.18 | Authentication |
+| Zod | 4.3.6 | Schema validation |
+
+### Project Structure
+
+```
+apps/frontend/
+├── src/
+│   ├── app/              # Next.js App Router pages
+│   │   ├── layout.tsx    # Root layout with providers
+│   │   ├── page.tsx      # Home/landing page
+│   │   ├── discover/     # Event discovery
+│   │   ├── create/       # Event creation
+│   │   ├── events/[id]/  # Event details (dynamic route)
+│   │   ├── signin/       # Email/Google/phone sign-in
+│   │   └── signup/       # User registration
+│   ├── components/       # Reusable UI components
+│   │   ├── ui/           # Base components (Button, Card, etc.)
+│   │   ├── auth/         # Auth-related components
+│   │   └── discover/     # Discovery page components
+│   └── lib/              # Utilities and clients
+│       ├── orpc.ts       # oRPC client setup
+│       ├── auth-client.ts # Better Auth client
+│       ├── api.ts        # Legacy REST API functions
+│       └── utils.ts      # Tailwind utility helpers
+└── package.json
+```
+
+## Key Features
+
+### Next.js App Router
+
+The application uses Next.js 16's App Router for modern routing:
+
+- **Server Components** by default for optimal performance
+- **Client Components** marked with `"use client"` for interactivity
+- **Dynamic routes** for event pages (`/events/[id]`)
+- **Nested layouts** for consistent UI structure
+- **Server-side rendering (SSR)** for SEO and initial load performance
+
+### React 19 Enhancements
+
+The project leverages React 19 features:
+
+- **React Compiler** via `babel-plugin-react-compiler` for automatic optimization
+- **Modern hooks** and concurrent features
+- **Improved suspense boundaries** for loading states
+
+### Styling System
+
+The frontend uses a comprehensive Tailwind CSS setup:
+
+- **Tailwind CSS 4** with PostCSS integration
+- **Utility-first** approach for rapid development
+- **Dark mode** support with theme toggle
+- **Custom animations** via `tw-animate-css`
+- **Responsive design** with mobile-first breakpoints
+
+```typescript
+// src/lib/utils.ts
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+```
+
+## Root Layout
+
+The root layout sets up global providers and fonts:
+
+```tsx
+// src/app/layout.tsx
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Providers } from "./providers";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Pathway — Student Discovery",
+  description:
+    "Discover workshops, hackathons, and networking events tailored for students.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+```
+
+## Provider Setup
+
+The `Providers` component wraps the app with necessary context:
+
+```tsx
+// src/app/providers.tsx
+"use client";
+
+import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient());
+
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+```
+
+### Environment Variables
+
+The frontend uses the following environment variables:
+
+- `NEXT_PUBLIC_API_URL` - Backend API base URL (default: `http://localhost:3001`)
+- `NEXT_PUBLIC_AUTH_URL` - Better Auth base URL (default: `http://localhost:3001`)
+
+## Development Workflow
+
+### Scripts
+
+```json
+{
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "lint": "eslint"
+}
+```
+
+### Development Server
+
+```bash
+npm run dev
+```
+
+Starts the Next.js development server on `http://localhost:3000` with:
+- Hot module replacement (HMR)
+- Fast refresh for React components
+- TypeScript type checking
+- ESLint integration
+
+### Production Build
+
+```bash
+npm run build
+npm start
+```
+
+Creates an optimized production build with:
+- Static page generation where possible
+- Code splitting and bundling
+- Image optimization
+- Font optimization

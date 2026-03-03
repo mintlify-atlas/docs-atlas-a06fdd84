@@ -1,0 +1,206 @@
+---
+title: 'Baileys Integration'
+description: 'Learn how the WhatsApp Bot integrates with the Baileys library for WhatsApp Web API'
+---
+
+The WhatsApp Bot uses [Baileys](https://github.com/WhiskeySockets/Baileys), an open-source TypeScript/JavaScript WhatsApp Web API implementation, to connect and interact with WhatsApp.
+
+## BaileysService
+
+The `BaileysService` is the core service that manages the WhatsApp connection lifecycle.
+
+### Initialization
+
+The service implements `OnModuleInit` to start the WhatsApp socket connection when the NestJS module initializes:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:47
+onModuleInit(): void {
+  this.initializeDispatcher();
+  void this.startSock();
+}
+```
+
+### Socket Connection
+
+The socket is created using `makeWASocket` from Baileys with the following configuration:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:72
+private async startSock(): Promise<void> {
+  const { state, saveCreds } =
+    await useMultiFileAuthState('baileys_auth_info');
+
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  this.logger.info(`Using WA v${version.join('.')}, isLatest: ${isLatest}`);
+
+  this.sock = makeWASocket({
+    version,
+    logger: this.logger,
+    waWebSocketUrl: DEFAULT_CONNECTION_CONFIG.waWebSocketUrl,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, this.logger),
+    },
+    msgRetryCounterCache: this.msgRetryCounterCache,
+    generateHighQualityLinkPreview: true,
+    getMessage: this.getMessage,
+  });
+
+  this.sock.ev.process(async (events: Partial<BaileysEventMap>) => {
+    if (events['creds.update']) {
+      await saveCreds();
+    }
+
+    this.handleBatchEvents(events);
+  });
+}
+```
+
+### Key Features
+
+#### Multi-File Authentication
+
+Authentication state is persisted using `useMultiFileAuthState`, storing credentials in the `baileys_auth_info` directory:
+
+```typescript
+const { state, saveCreds } = await useMultiFileAuthState('baileys_auth_info');
+```
+
+Credentials are automatically saved when the `creds.update` event is received:
+
+```typescript
+if (events['creds.update']) {
+  await saveCreds();
+}
+```
+
+#### Version Management
+
+The service fetches the latest WhatsApp Web version to ensure compatibility:
+
+```typescript
+const { version, isLatest } = await fetchLatestBaileysVersion();
+```
+
+#### Caching
+
+A message retry counter cache is maintained using NodeCache:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:43
+private msgRetryCounterCache = new NodeCache() as CacheStore;
+```
+
+## QR Code Authentication
+
+When the bot starts for the first time (or after logout), it displays a QR code in the terminal for authentication:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:107
+@On('connection.update')
+private async handleConnectionUpdate(
+  update: Partial<ConnectionState>,
+): Promise<void> {
+  const { connection, lastDisconnect, qr } = update;
+
+  if (typeof qr === 'string') {
+    const qrcode = await qrCodeToString(qr, { type: 'terminal' });
+    console.log(qrcode);
+  }
+
+  if (connection === 'close') {
+    const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+
+    if (statusCode !== 401) {
+      this.logger.warn('Reconnecting...');
+      void this.startSock();
+    } else {
+      this.logger.error('Logged out from WhatsApp');
+    }
+  }
+
+  this.logger.debug({ connection }, 'Connection update');
+}
+```
+
+### Authentication Flow
+
+1. **First Run**: No credentials exist, QR code is generated and displayed
+2. **Scan QR Code**: User scans QR code with WhatsApp mobile app
+3. **Credentials Saved**: Authentication state is saved to `baileys_auth_info/`
+4. **Subsequent Runs**: Stored credentials are used, no QR code needed
+
+### Connection Recovery
+
+The bot handles disconnections gracefully:
+
+- **Non-401 errors**: Automatically reconnect
+- **401 Unauthorized**: User logged out, requires new QR code scan
+
+## Event Processing
+
+The service processes batches of Baileys events and dispatches them to registered handlers:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:101
+private handleBatchEvents(events: Partial<BaileysEventMap>): void {
+  for (const [event, payload] of Object.entries(events)) {
+    this.dispatcher.dispatch(event as keyof BaileysEventMap, payload);
+  }
+}
+```
+
+Events include:
+- `connection.update`: Connection status changes
+- `messages.upsert`: New incoming messages
+- `creds.update`: Authentication credentials updated
+- And many more from the Baileys event system
+
+## Sending Messages
+
+Messages are sent using the socket's `sendMessage` method:
+
+```typescript
+// Example from baileys.service.ts:151
+@MessageStartsWith('ping')
+private async handlePing(msg: WAMessage): Promise<void> {
+  const jid = msg.key.remoteJid;
+  if (jid) {
+    await this.sock.sendMessage(jid, { text: 'pong' });
+  }
+}
+```
+
+The `jid` (Jabber ID) is WhatsApp's identifier for chats:
+- **Individual chats**: `<phone>@s.whatsapp.net`
+- **Group chats**: `<id>@g.us`
+
+## Logging
+
+The service uses Pino for structured logging with pretty printing:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:28
+private readonly logger = P({
+  name: BaileysService.name,
+  level: 'info',
+  transport: {
+    targets: [
+      {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          level: 'info',
+        },
+      },
+    ],
+  },
+});
+```
+
+## Next Steps
+
+<Card title="Message Handlers" icon="message" href="/whatsapp/message-handlers">
+  Learn how to create custom message handlers using decorators
+</Card>

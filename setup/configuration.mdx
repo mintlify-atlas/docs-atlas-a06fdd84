@@ -1,0 +1,217 @@
+---
+title: Configuration
+description: Configure environment variables and application settings
+---
+
+The DragonHacks Event Platform uses environment variables to configure different components. This guide explains how to set up configuration for each application.
+
+## Backend Configuration
+
+The backend application (NestJS API) requires several environment variables for database, authentication, storage, and email services.
+
+<Steps>
+  <Step title="Create environment file">
+    Navigate to the backend directory and create a `.env` file:
+    
+    ```bash
+    cd apps/backend
+    cp .env.example .env
+    ```
+  </Step>
+  
+  <Step title="Configure environment variables">
+    Edit the `.env` file with your configuration. See the sections below for details on each variable.
+  </Step>
+</Steps>
+
+### Environment Variables Reference
+
+#### Application Settings
+
+```bash
+NODE_ENV="development"
+PORT=3000
+```
+
+- **NODE_ENV** - Application environment (`development`, `production`, or `test`)
+- **PORT** - Port number for the backend API server (default: 3000)
+
+#### Database Configuration
+
+```bash
+DATABASE_URL="file:./dev.db"
+```
+
+- **DATABASE_URL** - SQLite database connection string
+  - For development: `file:./dev.db` (relative path)
+  - For production: Absolute path to your SQLite database file
+
+<Note>
+  The platform uses SQLite with Prisma. The database file will be created automatically when you run migrations.
+</Note>
+
+#### Authentication (Better Auth)
+
+```bash
+BETTER_AUTH_SECRET="n1n9EzFokvnqOlX9T6c5vvDDtgiujVPs"
+BETTER_AUTH_URL="http://localhost:3000"
+```
+
+- **BETTER_AUTH_SECRET** - Secret key for signing tokens and sessions
+- **BETTER_AUTH_URL** - Base URL of your backend API
+
+<Warning>
+  Generate a strong random secret for production. Never commit your production secret to version control!
+  
+  ```bash
+  # Generate a secure random secret
+  openssl rand -base64 32
+  ```
+</Warning>
+
+#### Server URLs
+
+```bash
+SERVER_URL="http://localhost:3000"
+FRONTEND_URL="http://localhost:3001"
+```
+
+- **SERVER_URL** - Backend API URL (used for CORS and callbacks)
+- **FRONTEND_URL** - Frontend application URL (used for CORS and redirects)
+
+#### S3 Storage (MinIO)
+
+```bash
+S3_BUCKET="development"
+S3_REGION="us-east-1"
+S3_ENDPOINT="http://localhost:9000"
+S3_ACCESS_KEY="minioAccessKey"
+S3_SECRET_KEY="minioSecretKey"
+```
+
+- **S3_BUCKET** - Bucket name for file storage
+- **S3_REGION** - AWS region (use any valid region for MinIO)
+- **S3_ENDPOINT** - MinIO server endpoint
+- **S3_ACCESS_KEY** - MinIO access key (matches `MINIO_ROOT_USER` in docker-compose.yaml)
+- **S3_SECRET_KEY** - MinIO secret key (matches `MINIO_ROOT_PASSWORD` in docker-compose.yaml)
+
+<Note>
+  MinIO is an S3-compatible object storage server. The default credentials in `.env.example` match the Docker Compose configuration.
+</Note>
+
+#### Email Service (SES)
+
+```bash
+SES_REGION="us-east-1"
+SES_ACCESS_KEY="sesAccessKey"
+SES_SECRET_KEY="sesSecretKey"
+SES_FROM_ADDRESS="noreply@example.com"
+```
+
+- **SES_REGION** - AWS SES region
+- **SES_ACCESS_KEY** - AWS access key with SES permissions
+- **SES_SECRET_KEY** - AWS secret key
+- **SES_FROM_ADDRESS** - Email address to send from
+
+<Warning>
+  For production, you'll need valid AWS SES credentials. For development, these values are placeholders and email functionality may not work.
+</Warning>
+
+#### Redis Configuration
+
+```bash
+REDIS_HOST="localhost"
+REDIS_PORT=6379
+```
+
+- **REDIS_HOST** - Redis server hostname
+- **REDIS_PORT** - Redis server port (default: 6379)
+
+<Note>
+  Redis is used for queue management (BullMQ). Ensure Redis is running via Docker Compose before starting the backend.
+</Note>
+
+## WhatsApp Bot Configuration
+
+The WhatsApp bot has minimal configuration requirements.
+
+<Steps>
+  <Step title="Create environment file">
+    ```bash
+    cd apps/whatsapp-bot
+    cp .env.example .env
+    ```
+  </Step>
+  
+  <Step title="Configure Redis connection">
+    ```bash
+    REDIS_HOST="localhost"
+    REDIS_PORT=6379
+    ```
+  </Step>
+</Steps>
+
+## Frontend Configuration
+
+The frontend (Next.js) application typically doesn't require a `.env` file for local development, as it connects to the backend API at `http://localhost:3000` by default.
+
+For custom configuration, create `apps/frontend/.env.local`:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:3000
+```
+
+<Note>
+  Environment variables in Next.js must be prefixed with `NEXT_PUBLIC_` to be accessible in the browser.
+</Note>
+
+## Configuration Validation
+
+After setting up your environment files, verify the configuration:
+
+<Steps>
+  <Step title="Check backend configuration">
+    ```bash
+    cd apps/backend
+    cat .env
+    ```
+  </Step>
+  
+  <Step title="Verify Docker services match">
+    Ensure Redis and MinIO credentials in `.env` match those in `docker-compose.yaml`
+  </Step>
+  
+  <Step title="Test configuration loading">
+    Start the backend in development mode and check for configuration errors:
+    ```bash
+    cd apps/backend
+    pnpm start:dev
+    ```
+  </Step>
+</Steps>
+
+## Environment-Specific Configuration
+
+### Development
+
+Use the `.env.example` values as-is. They're configured to work with local Docker services.
+
+### Production
+
+<Warning>
+  For production deployments, you must:
+  
+  1. Generate a strong `BETTER_AUTH_SECRET`
+  2. Use a production database (not `file:./dev.db`)
+  3. Configure real AWS SES credentials for email
+  4. Update `SERVER_URL` and `FRONTEND_URL` to production domains
+  5. Use secure MinIO/S3 credentials
+  6. Never commit `.env` files to version control
+</Warning>
+
+## Next Steps
+
+With configuration complete, proceed to:
+
+1. [Docker Setup](/setup/docker) - Start Redis and MinIO services
+2. [Database Setup](/setup/database) - Initialize the database with Prisma

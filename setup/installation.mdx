@@ -1,0 +1,182 @@
+---
+title: Installation
+description: Clone the repository and install dependencies for the DragonHacks Event Platform
+---
+
+This guide walks you through cloning the DragonHacks Event Platform repository and installing all necessary dependencies.
+
+## Clone the Repository
+
+<Steps>
+  <Step title="Clone the project">
+    ```bash
+    git clone <repository-url>
+    cd dragonhacks-hackathon
+    ```
+  </Step>
+  
+  <Step title="Verify the structure">
+    The repository is organized as a Turborepo monorepo with the following structure:
+    
+    ```
+    dragonhacks-hackathon/
+    ├── apps/
+    │   ├── backend/          # NestJS API server
+    │   ├── frontend/         # Next.js web application
+    │   └── whatsapp-bot/     # WhatsApp notification bot
+    ├── package.json          # Root package configuration
+    ├── docker-compose.yaml   # Docker services configuration
+    └── turbo.json            # Turborepo configuration
+    ```
+  </Step>
+</Steps>
+
+## Install Dependencies
+
+The project uses pnpm workspaces managed by Turborepo. Install all dependencies from the root directory:
+
+<CodeGroup>
+```bash pnpm (Recommended)
+pnpm install
+```
+
+```bash npm
+npm install
+```
+
+```bash yarn
+yarn install
+```
+</CodeGroup>
+
+<Note>
+  The installation process will install dependencies for all apps in the monorepo (backend, frontend, and whatsapp-bot) simultaneously.
+</Note>
+
+## Verify Installation
+
+<Steps>
+  <Step title="Check installed packages">
+    Verify that node_modules directories were created:
+    ```bash
+    ls -la node_modules
+    ls -la apps/backend/node_modules
+    ls -la apps/frontend/node_modules
+    ```
+  </Step>
+  
+  <Step title="Verify Turborepo">
+    Check that Turbo is available:
+    
+    <CodeGroup>
+    ```bash Global Turbo
+    turbo --version
+    ```
+    
+    ```bash pnpm
+    pnpm exec turbo --version
+    ```
+    
+    ```bash npx
+    npx turbo --version
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Test build (optional)">
+    Verify that the project builds successfully:
+    
+    <CodeGroup>
+    ```bash pnpm
+    pnpm build
+    ```
+    
+    ```bash Global Turbo
+    turbo build
+    ```
+    
+    ```bash npx
+    npx turbo build
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Key Dependencies
+
+### Backend (NestJS)
+
+The backend application includes:
+
+- **@nestjs/core** - NestJS framework
+- **@prisma/client** - Database ORM
+- **better-auth** - Authentication library
+- **@nestjs/bullmq** - Queue management
+- **@aws-sdk/client-s3** - S3-compatible storage client
+- **@aws-sdk/client-ses** - Email service client
+- **@orpc/nest** - Type-safe RPC framework
+
+### Frontend (Next.js)
+
+The frontend application includes:
+
+- **next** - Next.js framework (v16.1.6)
+- **react** - React library (v19.2.3)
+- **better-auth** - Authentication client
+- **@tanstack/react-query** - Data fetching and caching
+- **@orpc/client** - Type-safe API client
+- **tailwindcss** - Utility-first CSS framework
+
+### Development Tools
+
+Shared development dependencies:
+
+- **TypeScript** - Static type checking (v5.9.2)
+- **Turbo** - Monorepo build system (v2.8.7)
+- **Prettier** - Code formatting
+- **ESLint** - Code linting
+
+## Troubleshooting
+
+### pnpm Installation Fails
+
+If pnpm installation fails, try clearing the cache:
+
+```bash
+pnpm store prune
+pnpm install
+```
+
+### Node Version Mismatch
+
+If you encounter node version errors, ensure you're using Node.js 18 or higher:
+
+```bash
+node --version
+```
+
+Consider using [nvm](https://github.com/nvm-sh/nvm) to manage Node.js versions:
+
+```bash
+nvm install 18
+nvm use 18
+```
+
+### Workspace Resolution Issues
+
+If you have issues with workspace dependencies, try:
+
+```bash
+rm -rf node_modules
+rm -rf apps/*/node_modules
+rm pnpm-lock.yaml
+pnpm install
+```
+
+## Next Steps
+
+After successfully installing dependencies, proceed to:
+
+1. [Configuration](/setup/configuration) - Set up environment variables
+2. [Docker Setup](/setup/docker) - Start required services
+3. [Database Setup](/setup/database) - Initialize the database

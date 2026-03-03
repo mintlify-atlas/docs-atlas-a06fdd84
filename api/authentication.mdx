@@ -1,0 +1,294 @@
+---
+title: 'Authentication'
+description: 'Authenticate requests to the DragonHacks API using Better Auth'
+---
+
+## Overview
+
+The DragonHacks API uses **Better Auth** for authentication and session management. Better Auth provides a secure, production-ready authentication system with support for multiple providers and session handling.
+
+## Authentication Methods
+
+The API supports the following authentication methods configured in `src/auth/auth.base.ts:26`:
+
+### Email & Password
+
+Traditional email and password authentication.
+
+```bash
+# Sign up
+curl -X POST http://localhost:3001/auth/sign-up/email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePassword123!",
+    "name": "John Doe"
+  }'
+
+# Sign in
+curl -X POST http://localhost:3001/auth/sign-in/email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePassword123!"
+  }'
+```
+
+### Google OAuth
+
+OAuth2 authentication via Google. Configured with client credentials from environment variables (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`).
+
+```bash
+# Initiate OAuth flow
+curl http://localhost:3001/auth/google
+```
+
+This redirects to Google's OAuth consent screen. After authorization, the user is redirected back with a session token.
+
+### Phone Number
+
+Phone-based authentication using the Better Auth phone number plugin.
+
+## Session Management
+
+### How Sessions Work
+
+Better Auth uses cookie-based sessions with the following characteristics:
+
+- **Cookie Name**: `better-auth.session_token`
+- **Base Path**: `/auth` (all auth endpoints are under this path)
+- **Credentials**: Must include cookies in cross-origin requests
+- **Security**: Session tokens are securely signed using `BETTER_AUTH_SECRET`
+
+Sessions are automatically managed through HTTP cookies. When you authenticate successfully, Better Auth sets a session cookie that's automatically included in subsequent requests by your browser.
+
+### Getting Current Session
+
+```bash
+curl -X GET http://localhost:3001/auth/get-session \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN" \
+  --cookie-jar cookies.txt
+```
+
+Response:
+
+```json
+{
+  "user": {
+    "id": "user_123",
+    "email": "user@example.com",
+    "name": "John Doe",
+    "emailVerified": false,
+    "birthday": "1995-06-15T00:00:00Z",
+    "createdAt": "2026-03-01T10:00:00Z",
+    "updatedAt": "2026-03-01T10:00:00Z"
+  },
+  "session": {
+    "id": "session_abc",
+    "userId": "user_123",
+    "expiresAt": "2026-04-01T10:00:00Z",
+    "token": "..."
+  }
+}
+```
+
+### Sign Out
+
+```bash
+curl -X POST http://localhost:3001/auth/sign-out \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN"
+```
+
+## Protected Routes
+
+Many API endpoints require authentication. These routes use the `protectedRoute` middleware defined in `src/common/middleware/protectedRoute.ts:5`.
+
+### How Protected Routes Work
+
+1. Middleware extracts session from request headers/cookies
+2. Calls `auth.api.getSession()` to validate the session
+3. If no valid session exists, returns `UNAUTHORIZED` error
+4. If valid, adds session to request context and continues
+
+Example from `src/events/events.controller.ts:46`:
+
+```typescript
+return implement(contract.events.create)
+  .use(protectedRoute)
+  .handler(async ({ context, input }) => {
+    // context.session is guaranteed to exist here
+    await this.eventsService.create(context.session!.user.id, input);
+  });
+```
+
+## Making Authenticated Requests
+
+### Using Cookies (Browser)
+
+When using the API from a browser with CORS enabled, the session cookie is automatically included:
+
+```javascript
+fetch('http://localhost:3001/users/me', {
+  method: 'GET',
+  credentials: 'include', // Important: include cookies
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+```
+
+### Using cURL
+
+Save cookies to a file and reuse them:
+
+```bash
+# Sign in and save cookies
+curl -X POST http://localhost:3001/auth/sign-in/email \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password"}' \
+  --cookie-jar cookies.txt
+
+# Make authenticated request
+curl -X GET http://localhost:3001/users/me \
+  --cookie cookies.txt
+
+# Or manually include the session token
+curl -X GET http://localhost:3001/users/me \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN"
+```
+
+### Creating an Event (Protected)
+
+```bash
+curl -X POST http://localhost:3001/events \
+  -H "Content-Type: application/json" \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN" \
+  -d '{
+    "title": "DragonHacks 2026",
+    "description": "Join us for an amazing hackathon!",
+    "category": "HACKATHON",
+    "visibility": "PUBLIC",
+    "type": "IN_PERSON",
+    "startAt": "2026-04-15T09:00:00Z",
+    "endAt": "2026-04-17T18:00:00Z",
+    "locationUrl": "https://maps.google.com/venue",
+    "maxAttendees": 200
+  }'
+```
+
+### Getting Current User (Protected)
+
+```bash
+curl -X GET http://localhost:3001/users/me \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN"
+```
+
+Response:
+
+```json
+{
+  "id": "user_123",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "emailVerified": false,
+  "birthday": "1995-06-15T00:00:00Z",
+  "createdAt": "2026-03-01T10:00:00Z",
+  "updatedAt": "2026-03-01T10:00:00Z"
+}
+```
+
+## Authentication Errors
+
+### UNAUTHORIZED (401)
+
+Returned when no valid session exists for a protected route.
+
+```json
+{
+  "code": "UNAUTHORIZED",
+  "message": "Authentication required"
+}
+```
+
+**Solution**: Sign in and include the session cookie in your request.
+
+### FORBIDDEN (403)
+
+Returned when authenticated but lacking permission for the action.
+
+```json
+{
+  "code": "FORBIDDEN",
+  "message": "Insufficient permissions"
+}
+```
+
+**Solution**: Ensure you have the necessary permissions (e.g., only event organizers can update events).
+
+## Configuration
+
+### Environment Variables
+
+Required environment variables for authentication:
+
+```bash
+# Better Auth Configuration
+BETTER_AUTH_URL=http://localhost:3001
+BETTER_AUTH_SECRET=your-secret-key-min-32-chars
+
+# Google OAuth (optional)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# CORS
+FRONTEND_URL=http://localhost:3000
+```
+
+### User Fields
+
+The API extends the default Better Auth user model with additional fields defined in `src/auth/auth.base.ts:18`:
+
+```typescript
+user: {
+  additionalFields: {
+    birthday: {
+      type: 'date',
+    },
+  },
+}
+```
+
+Standard fields include:
+- `id` - Unique user identifier
+- `email` - User email address
+- `name` - Display name
+- `emailVerified` - Email verification status
+- `birthday` - User's date of birth (custom field)
+- `createdAt` - Account creation timestamp
+- `updatedAt` - Last update timestamp
+
+## Best Practices
+
+1. **Never expose session tokens** - Keep them secure and never log or transmit them over insecure channels
+
+2. **Handle CORS properly** - Always include `credentials: 'include'` when making cross-origin requests from the browser
+
+3. **Check session expiration** - Sessions expire based on Better Auth configuration. Handle `UNAUTHORIZED` errors gracefully
+
+4. **Use HTTPS in production** - Always use HTTPS to protect session cookies from interception
+
+5. **Validate on both client and server** - Don't rely solely on client-side session checks
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Introduction" icon="book" href="/api/introduction">
+    Learn about the API architecture and making requests
+  </Card>
+  <Card title="Users API" icon="users" href="/api/users/get-me">
+    Manage user profiles and account information
+  </Card>
+  <Card title="Events API" icon="calendar" href="/api/events/get-all">
+    Create and manage events with authentication
+  </Card>
+</CardGroup>

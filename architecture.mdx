@@ -1,0 +1,537 @@
+---
+title: Architecture
+description: Understanding the DragonHacks Event Platform's monorepo structure and component interactions
+---
+
+## Overview
+
+The DragonHacks Event Platform is built as a Turborepo monorepo with three main applications that work together to provide a complete event management solution. The architecture emphasizes type safety, modularity, and developer experience.
+
+```
+dragonhacks-hackathon/
+├── apps/
+│   ├── backend/          # NestJS API server
+│   ├── frontend/         # Next.js web application
+│   └── whatsapp-bot/     # WhatsApp notification service
+├── docker-compose.yaml   # Infrastructure services
+├── turbo.json           # Turborepo configuration
+└── pnpm-workspace.yaml  # Workspace configuration
+```
+
+## Monorepo Structure
+
+### Turborepo Configuration
+
+The project uses Turborepo for efficient task orchestration and caching:
+
+```json turbo.json
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": [".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
+```
+
+<Info>
+  Turborepo automatically handles task dependencies and runs parallel tasks when possible, significantly speeding up builds and development workflows.
+</Info>
+
+### Workspace Configuration
+
+The pnpm workspace structure allows for:
+- Shared dependencies across apps
+- Code sharing between backend and frontend (e.g., contract types)
+- Centralized package management
+
+```yaml pnpm-workspace.yaml
+packages:
+  - "apps/*"
+  - "packages/*"
+```
+
+## Application Architecture
+
+### Backend (NestJS)
+
+**Location**: `apps/backend/`
+
+The backend is built with NestJS and follows a modular architecture:
+
+```typescript apps/backend/src/app.module.ts
+@Module({
+  imports: [
+    PrismaModule,
+    AuthModule,
+    ConfigModule.forRoot({ isGlobal: true }),
+    
+    ORPCModule.forRootAsync({
+      useFactory: (request: Request) => ({
+        context: { request },
+        eventIteratorKeepAliveInterval: 5000,
+        plugins: [
+          new SmartCoercionPlugin({
+            schemaConverters: [new ZodToJsonSchemaConverter()]
+          })
+        ]
+      })
+    }),
+    
+    BullModule.forRootAsync({
+      useFactory: () => ({
+        connection: {
+          host: process.env.REDIS_HOST,
+          port: parseInt(process.env.REDIS_PORT!)
+        }
+      })
+    }),
+    
+    EmailModule,
+    WhatsappModule,
+    NotificationModule,
+    EventsModule,
+    StorageModule,
+    UsersModule
+  ]
+})
+export class AppModule {}
+```
+
+#### Key Modules
+
+<AccordionGroup>
+  <Accordion title="Authentication (AuthModule)">
+    Uses Better Auth for secure authentication:
+    - Email/password authentication
+    - Session management
+    - Phone number verification
+    - OAuth support (extensible)
+    
+    Database tables: `User`, `Session`, `Account`, `Verification`
+  </Accordion>
+
+  <Accordion title="Events (EventsModule)">
+    Core event management functionality:
+    - Event CRUD operations
+    - Event discovery and search
+    - Registration management
+    - Check-in system
+    - Announcements
+    
+    Database tables: `Event`, `EventRegistration`, `EventOrganizer`, `Announcement`
+  </Accordion>
+
+  <Accordion title="Storage (StorageModule)">
+    File upload and management:
+    - AWS S3 SDK integration
+    - MinIO support (S3-compatible)
+    - Presigned URL generation
+    - Event banner uploads
+    
+    Environment: `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
+  </Accordion>
+
+  <Accordion title="Email (EmailModule)">
+    Asynchronous email sending:
+    - BullMQ job queue
+    - AWS SES integration
+    - Email templates
+    - Background processing
+    
+    Environment: `SES_REGION`, `SES_ACCESS_KEY`, `SES_SECRET_KEY`, `SES_FROM_ADDRESS`
+  </Accordion>
+
+  <Accordion title="WhatsApp (WhatsappModule)">
+    WhatsApp notification coordination:
+    - Job queue management
+    - Communication with WhatsApp bot service
+    - Notification scheduling
+  </Accordion>
+</AccordionGroup>
+
+#### Database Schema
+
+The backend uses Prisma ORM with SQLite for development:
+
+```prisma apps/backend/prisma/schema.prisma
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/@generated/prisma"
+  moduleFormat = "cjs"
+}
+```
+
+**Event Model Example**:
+```prisma
+model Event {
+  id              String            @id @default(cuid())
+  name            String
+  slug            String?           @unique
+  description     String?
+  startAt         DateTime
+  endAt           DateTime
+  bannerMediaKey  String?
+  locationUrl     String
+  locationType    EventLocationType
+  requireApproval Boolean           @default(false)
+  capacity        Int
+  visibility      EventVisibility
+  category        EventCategory
+  type            EventType
+  createdAt       DateTime          @default(now())
+  
+  eventOrganizers    EventOrganizer[]
+  eventRegistration  EventRegistration[]
+  announcements      Announcement[]
+}
+```
+
+<Note>
+  While SQLite is used for development, Prisma supports easy migration to PostgreSQL, MySQL, or other production databases.
+</Note>
+
+### Frontend (Next.js)
+
+**Location**: `apps/frontend/`
+
+The frontend uses Next.js 16 with the App Router and React 19:
+
+```typescript apps/frontend/src/app/layout.tsx
+import { Providers } from "./providers";
+
+export const metadata: Metadata = {
+  title: "Pathway — Student Discovery",
+  description: "Discover workshops, hackathons, and networking events tailored for students."
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+```
+
+#### Type-Safe API Client
+
+The frontend uses oRPC for type-safe API communication:
+
+```typescript apps/frontend/src/lib/orpc.ts
+import { createORPCClient } from "@orpc/client";
+import { OpenAPILink } from "@orpc/openapi-client/fetch";
+import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+import { contract } from "backend/contract";
+
+const link = new OpenAPILink(contract, {
+  url: getApiBaseUrl(),
+  fetch: (request, init) => globalThis.fetch(request, {
+    ...init,
+    credentials: "include"
+  })
+});
+
+const client = createORPCClient(link);
+export const orpc = createTanstackQueryUtils(client);
+```
+
+**Key Benefits**:
+- Full TypeScript type inference from backend contracts
+- Automatic request/response validation
+- TanStack Query integration for data fetching
+- No manual API type definitions needed
+
+#### App Structure
+
+```
+apps/frontend/src/app/
+├── page.tsx              # Landing page
+├── layout.tsx            # Root layout
+├── providers.tsx         # React Query provider
+├── signin/               # Authentication pages
+├── signup/
+├── discover/             # Event discovery
+├── events/[slug]/        # Event details
+└── create/               # Event creation
+```
+
+### WhatsApp Bot (NestJS)
+
+**Location**: `apps/whatsapp-bot/`
+
+A standalone NestJS microservice for WhatsApp notifications:
+
+```typescript apps/whatsapp-bot/src/main.ts
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.createApplicationContext(AppModule);
+  await app.init();
+}
+void bootstrap();
+```
+
+**Architecture**:
+- Runs as an application context (no HTTP server)
+- Uses Baileys library for WhatsApp Web API
+- Processes jobs from Redis queue (BullMQ)
+- QR code authentication for WhatsApp connection
+- Maintains persistent WhatsApp session
+
+**Key Dependencies**:
+- `baileys@7.0.0-rc.9` - WhatsApp Web API
+- `bullmq@^5.66.6` - Job queue processing
+- `qrcode@^1.5.4` - QR code generation
+- `pino` - Structured logging
+
+## Type Safety with oRPC
+
+### Contract Definition
+
+The backend defines type-safe contracts using oRPC:
+
+```typescript apps/backend/src/users/users.contract.ts
+import { oc } from "@orpc/contract";
+import { getByIdInputSchema, userSchema } from "./users.schema";
+
+const getById = oc.route({
+  path: "/users/{id}",
+  method: "GET",
+  tags: ["Users"]
+}).input(getByIdInputSchema).output(userSchema);
+
+const getMe = oc.route({
+  path: "/users/me",
+  method: "GET",
+  tags: ["Users"]
+}).output(userSchema);
+
+export const usersContract = {
+  getById,
+  getMe
+};
+```
+
+### Contract Aggregation
+
+```typescript apps/backend/src/contract.ts
+import { usersContract } from "./users/users.contract";
+import { eventsContract } from "./events/events.contract";
+
+export const contract = {
+  users: usersContract,
+  events: eventsContract
+};
+```
+
+This contract is imported by the frontend, providing:
+- Compile-time type checking
+- Auto-completion in IDEs
+- Automatic runtime validation
+- OpenAPI specification generation
+
+## Infrastructure Services
+
+### Docker Compose
+
+Local development infrastructure:
+
+```yaml docker-compose.yaml
+services:
+  redis:
+    image: redis:7.2
+    command: redis-server --maxmemory 1gb --maxmemory-policy noeviction
+    ports:
+      - "6379:6379"
+      
+  minio:
+    image: minio/minio
+    environment:
+      - MINIO_ROOT_USER=minioAccessKey
+      - MINIO_ROOT_PASSWORD=minioSecretKey
+    command: ["server", "--console-address", ":9001", "/data"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+```
+
+### Redis
+
+**Purpose**: Job queue and caching
+- BullMQ job queues for email and WhatsApp notifications
+- Shared between backend and WhatsApp bot
+- Persistence disabled for development (noeviction policy)
+
+### MinIO
+
+**Purpose**: S3-compatible object storage
+- Event banner uploads
+- User profile images
+- Any file attachments
+- Development alternative to AWS S3
+
+## Data Flow
+
+### Event Registration Flow
+
+<Steps>
+  <Step title="User Submits Registration">
+    Frontend sends registration request via oRPC client
+    
+    ```typescript
+    await orpc.events.register.mutate({
+      eventId: "evt_123"
+    });
+    ```
+  </Step>
+  
+  <Step title="Backend Processes Request">
+    - Validates user authentication
+    - Checks event capacity
+    - Creates EventRegistration record
+    - Returns updated registration status
+  </Step>
+  
+  <Step title="Notification Queue">
+    - Email job added to BullMQ queue
+    - WhatsApp notification job added (if enabled)
+    - Jobs processed asynchronously
+  </Step>
+  
+  <Step title="Notifications Sent">
+    - Email processor sends confirmation via SES
+    - WhatsApp bot sends message via Baileys
+    - User receives confirmation
+  </Step>
+</Steps>
+
+### Authentication Flow
+
+<Steps>
+  <Step title="User Signs In">
+    Frontend calls Better Auth endpoint with credentials
+  </Step>
+  
+  <Step title="Session Creation">
+    - Backend validates credentials
+    - Creates session in database
+    - Sets HTTP-only session cookie
+  </Step>
+  
+  <Step title="Authenticated Requests">
+    - Cookie sent with each request
+    - oRPC middleware validates session
+    - User context available in handlers
+  </Step>
+</Steps>
+
+## Performance Optimizations
+
+### Turborepo Caching
+
+- Build outputs cached across runs
+- Remote caching available with Vercel
+- Task dependencies automatically managed
+- Parallel execution of independent tasks
+
+### Frontend Optimizations
+
+- **React 19 Compiler**: Automatic memoization and optimization
+- **Next.js App Router**: Improved server components and streaming
+- **TanStack Query**: Automatic caching and background refetching
+- **Tailwind CSS 4**: Optimized CSS generation
+
+### Backend Optimizations
+
+- **BullMQ**: Asynchronous job processing prevents blocking
+- **Prisma**: Efficient query generation and connection pooling
+- **oRPC**: Lightweight RPC with minimal overhead
+
+## Security Considerations
+
+<Warning>
+  Always review security settings before production deployment.
+</Warning>
+
+### Authentication
+
+- Session-based authentication with HTTP-only cookies
+- CSRF protection enabled
+- Password hashing with Better Auth
+- Email verification support
+
+### CORS Configuration
+
+```typescript apps/backend/src/main.ts
+app.enableCors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true
+});
+```
+
+### Environment Variables
+
+- Never commit `.env` files
+- Rotate secrets regularly
+- Use different secrets for each environment
+- Validate environment variables at startup
+
+## Deployment Considerations
+
+### Database Migration
+
+- Replace SQLite with PostgreSQL or MySQL for production
+- Update `DATABASE_URL` in environment
+- Run migrations: `npx prisma migrate deploy`
+
+### Infrastructure Changes
+
+- Replace MinIO with AWS S3 or compatible service
+- Use managed Redis (AWS ElastiCache, Redis Cloud)
+- Configure email provider (AWS SES, SendGrid)
+- Set up WhatsApp Business API for production
+
+### Build Process
+
+```bash
+# Build all applications
+pnpm build
+
+# Build outputs:
+# - apps/backend/dist/
+# - apps/frontend/.next/
+# - apps/whatsapp-bot/dist/
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Backend API" icon="server" href="/api/introduction">
+    Explore API endpoints and contracts
+  </Card>
+  <Card title="Frontend Development" icon="code" href="/frontend/overview">
+    Build UI components and pages
+  </Card>
+  <Card title="Database Schema" icon="database" href="/backend/database-schema">
+    Learn about data models and relationships
+  </Card>
+  <Card title="Setup & Deployment" icon="rocket" href="/setup/docker">
+    Deploy to production environments
+  </Card>
+</CardGroup>

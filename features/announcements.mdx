@@ -1,0 +1,248 @@
+---
+title: Announcements
+description: Send updates and notifications to event participants
+---
+
+## Overview
+
+Announcements allow event organizers to broadcast important updates to all registered participants via email and WhatsApp.
+
+## Announcement Model
+
+```prisma
+// apps/backend/prisma/schema.prisma:181-193
+model Announcement {
+  id        String   @id @default(cuid())
+
+  eventId String
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  title   String
+  content String
+
+  createdAt DateTime @default(now())
+
+  @@index([eventId])
+}
+```
+
+Announcements are linked to specific events and cascade delete when the event is removed.
+
+## Creating Announcements
+
+Only event organizers can create announcements:
+
+```typescript
+// apps/backend/src/events/announcements/announcements.service.ts:15-57
+async create(eventId: string, organizerUserId: string, title: string, content: string) {
+  // Verify user is an organizer
+  const organizer = await this.prisma.eventOrganizer.findUnique({
+    where: { eventId_userId: { eventId, userId: organizerUserId } },
+  });
+  if (!organizer) {
+    throw new ORPCError('FORBIDDEN', { message: 'Only organizers can create announcements' });
+  }
+
+  const event = await this.prisma.event.findUnique({
+    where: { id: eventId },
+    select: { name: true },
+  });
+  if (!event) throw new ORPCError('NOT_FOUND');
+
+  // Create announcement record
+  const announcement = await this.prisma.announcement.create({
+    data: { eventId, title, content },
+  });
+
+  // Get all approved registrations
+  const registrations = await this.prisma.eventRegistration.findMany({
+    where: { eventId, status: 'APPROVED' },
+    select: { userId: true },
+  });
+
+  const userIds = registrations.map((r) => r.userId);
+
+  if (userIds.length > 0) {
+    const subject = `[${event.name}] ${title}`;
+    const body = `New announcement for "${event.name}":\n\n${title}\n\n${content}`;
+    const whatsappText = `📢 *${event.name}*\n\n*${title}*\n${content}`;
+
+    await this.notificationService.notifyUsers(userIds, {
+      subject,
+      body,
+      whatsappText,
+    });
+
+    this.logger.debug(
+      `Announcement "${title}" for event ${eventId} sent to ${userIds.length} users`,
+    );
+  }
+
+  return announcement;
+}
+```
+
+## Notification Flow
+
+When an announcement is created:
+
+1. **Verify Permissions** - Confirm the user is an event organizer
+2. **Create Record** - Save the announcement to the database
+3. **Find Recipients** - Query all users with APPROVED registration status
+4. **Send Notifications** - Broadcast to all recipients via email and WhatsApp
+
+### Multi-Channel Delivery
+
+Each announcement is sent through two channels:
+
+**Email Format:**
+```
+Subject: [Event Name] Announcement Title
+Body: New announcement for "Event Name":
+
+Announcement Title
+
+Announcement content goes here...
+```
+
+**WhatsApp Format:**
+```
+📢 *Event Name*
+
+*Announcement Title*
+Announcement content goes here...
+```
+
+The notification service handles delivery to multiple users:
+
+```typescript
+// apps/backend/src/notification/notification.service.ts:64-69
+/**
+ * Notify multiple users at once (e.g. all registrants of an event).
+ */
+async notifyUsers(userIds: string[], payload: NotifyUserPayload): Promise<void> {
+  await Promise.allSettled(userIds.map((id) => this.notifyUser(id, payload)));
+}
+```
+
+## Retrieving Announcements
+
+Anyone can view announcements for an event (useful for public event pages):
+
+```typescript
+// apps/backend/src/events/announcements/announcements.service.ts:59-66
+async getByEventId(eventId: string) {
+  const items = await this.prisma.announcement.findMany({
+    where: { eventId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, title: true, content: true, createdAt: true },
+  });
+  return { items };
+}
+```
+
+Announcements are returned in reverse chronological order (newest first).
+
+## API Endpoints
+
+### Create Announcement (Protected)
+
+Only authenticated organizers can create announcements:
+
+```typescript
+// apps/backend/src/events/announcements/announcements.controller.ts:11-23
+@Implement(contract.events.announcements.create)
+async create() {
+  return implement(contract.events.announcements.create)
+    .use(protectedRoute)
+    .handler(async ({ context, input }) => {
+      await this.announcementsService.create(
+        input.eventId,
+        context.session!.user.id,
+        input.title,
+        input.content,
+      );
+    });
+}
+```
+
+### Get Announcements (Public)
+
+Retrieving announcements doesn't require authentication:
+
+```typescript
+// apps/backend/src/events/announcements/announcements.controller.ts:25-32
+@Implement(contract.events.announcements.getByEventId)
+async getByEventId() {
+  return implement(contract.events.announcements.getByEventId)
+    .handler(async ({ input }) => {
+      return this.announcementsService.getByEventId(input.eventId);
+    });
+}
+```
+
+## Who Receives Announcements?
+
+Only users with **APPROVED** registration status receive announcements:
+
+```typescript
+// apps/backend/src/events/announcements/announcements.service.ts:33-36
+const registrations = await this.prisma.eventRegistration.findMany({
+  where: { eventId, status: 'APPROVED' },
+  select: { userId: true },
+});
+```
+
+This means:
+- ✅ Users with approved registrations receive announcements
+- ❌ Pending registrations do not receive announcements
+- ❌ Rejected registrations do not receive announcements  
+- ❌ Waitlisted users do not receive announcements
+
+## Use Cases
+
+### Event Updates
+```typescript
+{
+  title: "Venue Change",
+  content: "The workshop has been moved to Room 302. Looking forward to seeing you there!"
+}
+```
+
+### Reminders
+```typescript
+{
+  title: "Bring Your Laptop",
+  content: "Reminder: Please bring your laptop for the hands-on coding session tomorrow."
+}
+```
+
+### Pre-Event Information
+```typescript
+{
+  title: "Parking Information",
+  content: "Free parking is available in Lot B. Enter through the west gate and show your registration confirmation."
+}
+```
+
+### Post-Event Follow-Up
+```typescript
+{
+  title: "Thank You for Attending!",
+  content: "Thanks for joining our workshop! Slides and code samples are now available at: https://..."
+}
+```
+
+## Best Practices
+
+1. **Be Concise** - Keep announcements short and actionable
+2. **Use Clear Titles** - Make the subject immediately understandable
+3. **Include Details** - Provide necessary information (times, locations, links)
+4. **Timing Matters** - Send reminders with enough lead time
+5. **Test First** - Consider creating a test event to preview formatting
+
+## Related Features
+
+- [Events](/features/events) - Create and manage events
+- [Registrations](/features/registrations) - Manage who receives announcements
+- [WhatsApp Notifications](/features/whatsapp-notifications) - Multi-channel delivery system

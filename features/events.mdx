@@ -1,0 +1,366 @@
+---
+title: Events
+description: Complete guide to event management in DragonHacks
+---
+
+## Overview
+
+Events are the core feature of DragonHacks. Users can create, discover, and manage various types of educational and networking events.
+
+## Event Types
+
+DragonHacks supports four event types:
+
+```prisma
+// apps/backend/prisma/schema.prisma:85-90
+enum EventType {
+  SEMINAR
+  WORKSHOP
+  COMPETITION
+  BOOTCAMP
+}
+```
+
+## Event Properties
+
+The Event model includes comprehensive metadata:
+
+```prisma
+// apps/backend/prisma/schema.prisma:119-147
+model Event {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String? @unique
+  description String?
+
+  startAt DateTime
+  endAt   DateTime
+
+  bannerMediaKey String?
+
+  locationUrl  String
+  locationType  EventLocationType
+
+  requireApproval Boolean @default(false)
+  capacity  Int
+  visibility EventVisibility
+  
+  category EventCategory
+  type EventType
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+
+  eventOrganizers EventOrganizer[]
+  eventRegistration EventRegistration[]
+  announcements Announcement[]
+}
+```
+
+### Location Types
+
+```prisma
+// apps/backend/prisma/schema.prisma:92-95
+enum EventLocationType {
+  ONLINE
+  OFFLINE
+}
+```
+
+### Categories
+
+```prisma
+// apps/backend/prisma/schema.prisma:97-105
+enum EventCategory {
+  TECH
+  SCIENCE
+  MATH
+  BIOLOGY
+  SPORTS
+  SOCIAL_SCIENCE
+  OTHER
+}
+```
+
+### Visibility
+
+```prisma
+// apps/backend/prisma/schema.prisma:107-110
+enum EventVisibility {
+  PUBLIC
+  PRIVATE
+}
+```
+
+## Creating Events
+
+Organizers can create events with comprehensive details:
+
+```typescript
+// apps/backend/src/events/events.service.ts:167-204
+async create(
+  userId: string,
+  input: {
+    name: string;
+    description?: string | null;
+    startAt: Date;
+    endAt: Date;
+    bannerMediaKey?: string | null;
+    locationUrl: string;
+    locationType: EventLocationType;
+    requireApproval: boolean;
+    capacity: number;
+    visibility: EventVisibility;
+    category: EventCategory;
+    type: EventType;
+  },
+) {
+  const event = await this.prisma.event.create({
+    data: {
+      name: input.name,
+      description: input.description ?? undefined,
+      startAt: input.startAt,
+      endAt: input.endAt,
+      bannerMediaKey: input.bannerMediaKey ?? undefined,
+      locationUrl: input.locationUrl,
+      locationType: input.locationType,
+      requireApproval: input.requireApproval,
+      capacity: input.capacity,
+      visibility: input.visibility,
+      category: input.category,
+      type: input.type,
+    },
+  });
+  // Creator is automatically added as organizer
+  await this.prisma.eventOrganizer.create({
+    data: { eventId: event.id, userId },
+  });
+  return event;
+}
+```
+
+### Date Validation
+
+The system validates that event start time is before end time:
+
+```typescript
+// apps/backend/src/events/events.controller.ts:51-53
+if (input.startAt >= input.endAt) {
+  throw new ORPCError('BAD_REQUEST', { message: 'startAt must be before endAt' });
+}
+```
+
+### Banner Upload
+
+Event banners are uploaded to S3-compatible storage:
+
+```typescript
+// apps/backend/src/events/events.controller.ts:84-93
+@Implement(contract.events.getBannerUploadUrl)
+async getBannerUploadUrl() {
+  return implement(contract.events.getBannerUploadUrl)
+    .use(protectedRoute)
+    .handler(async ({ context, input }) => {
+      const key = `events/banners/${randomUUID()}`;
+      const uploadUrl = await this.storageService.getPresignedUploadUrl({ key });
+      return { uploadUrl, key };
+    });
+}
+```
+
+Banner URLs are resolved using presigned download URLs:
+
+```typescript
+// apps/backend/src/events/events.service.ts:14-21
+private async resolveBannerUrl(bannerMediaKey: string | null): Promise<string | null> {
+  if (!bannerMediaKey) return null;
+  try {
+    return await this.storage.getPresignedDownloadUrl({ key: bannerMediaKey });
+  } catch {
+    return null;
+  }
+}
+```
+
+## Discovering Events
+
+Users can browse events with filtering and pagination:
+
+```typescript
+// apps/backend/src/events/events.service.ts:93-165
+async getAll(params: {
+  category?: EventCategory;
+  visibility?: EventVisibility;
+  type?: EventType;
+  title?: string;
+  locationType?: EventLocationType;
+  limit: number;
+  cursor?: string;
+}) {
+  const { limit, cursor, ...filters } = params;
+  const where = {};
+  if (filters.category) Object.assign(where, { category: filters.category });
+  if (filters.visibility) Object.assign(where, { visibility: filters.visibility });
+  if (filters.type) Object.assign(where, { type: filters.type });
+  if (filters.locationType) Object.assign(where, { locationType: filters.locationType });
+  if (filters.title) Object.assign(where, { name: { contains: filters.title } });
+
+  const cursorArgs = buildPrismaCursorPaginationArgs(cursor);
+  const take = limit + 1;
+
+  const rows = await this.prisma.event.findMany({
+    where,
+    ...cursorArgs,
+    take,
+    orderBy: { createdAt: 'desc' },
+    include: {
+      eventOrganizers: { include: { user: { select: { id: true, name: true, image: true } } } },
+      eventRegistration: {
+        include: { user: { select: { id: true, name: true, image: true } } },
+      },
+    },
+  });
+
+  const { items, nextCursor, hasNextPage } = buildCursorPagination(rows, limit, (e) => e.id);
+  
+  // Returns paginated results with banner URLs and participant info
+}
+```
+
+### Filter Options
+
+- **category** - Filter by event category (TECH, SCIENCE, etc.)
+- **visibility** - Filter by PUBLIC or PRIVATE
+- **type** - Filter by event type (SEMINAR, WORKSHOP, etc.)
+- **title** - Search by event name (case-insensitive contains)
+- **locationType** - Filter by ONLINE or OFFLINE
+- **limit** - Results per page (1-50, default 20)
+- **cursor** - Pagination cursor for next page
+
+## Event Details
+
+Retrieve complete event information including organizers and registrations:
+
+```typescript
+// apps/backend/src/events/events.service.ts:32-91
+async getById(id: string, currentUserId?: string) {
+  const event = await this.prisma.event.findUnique({
+    where: { id },
+    include: {
+      eventOrganizers: { include: { user: { select: { id: true, name: true, image: true } } } },
+      eventRegistration: {
+        include: { user: { select: { id: true, name: true, image: true } } },
+      },
+    },
+  });
+  if (!event) return null;
+
+  const bannerUrl = await this.resolveBannerUrl(event.bannerMediaKey);
+
+  let isOrganizer = false;
+  let registration = null;
+
+  if (currentUserId) {
+    const org = event.eventOrganizers.find((o) => o.userId === currentUserId);
+    isOrganizer = !!org;
+    const reg = event.eventRegistration.find((r) => r.userId === currentUserId);
+    if (reg) {
+      registration = {
+        id: reg.id,
+        status: reg.status,
+        checkedInAt: reg.checkedInAt,
+        createdAt: reg.createdAt,
+      };
+    }
+  }
+
+  return {
+    // Full event details
+    peopleRegistered: event.eventRegistration.map(...),
+    organizers: event.eventOrganizers.map(...),
+    user: { isOrganizer, registration },
+  };
+}
+```
+
+## Updating Events
+
+Only organizers can update their events:
+
+```typescript
+// apps/backend/src/events/events.service.ts:206-247
+async updateById(
+  id: string,
+  userId: string,
+  input: { /* same fields as create */ },
+) {
+  // Verify user is an organizer
+  const organizer = await this.prisma.eventOrganizer.findUnique({
+    where: { eventId_userId: { eventId: id, userId } },
+  });
+  if (!organizer) return false;
+
+  await this.prisma.event.update({
+    where: { id },
+    data: { /* update fields */ },
+  });
+  return true;
+}
+```
+
+## Deleting Events
+
+Only the event owner (first organizer) can delete events:
+
+```typescript
+// apps/backend/src/events/events.service.ts:249-268
+async deleteById(id: string, userId: string): Promise<'deleted' | 'not_found' | 'forbidden'> {
+  const event = await this.prisma.event.findUnique({
+    where: { id },
+    include: { eventOrganizers: { orderBy: { createdAt: 'asc' } } },
+  });
+  if (!event) return 'not_found';
+
+  const ownerId = event.eventOrganizers[0]?.userId ?? null;
+  if (ownerId !== userId) return 'forbidden';
+
+  // Delete banner from storage
+  if (event.bannerMediaKey) {
+    try {
+      await this.storage.deleteObject({ key: event.bannerMediaKey });
+    } catch {}
+  }
+  
+  await this.prisma.event.delete({ where: { id } });
+  return 'deleted';
+}
+```
+
+## Event Organizers
+
+Organizers have special permissions for their events:
+
+```prisma
+// apps/backend/prisma/schema.prisma:149-161
+model EventOrganizer {
+  id        String   @id @default(uuid())
+
+  eventId String
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+}
+```
+
+The first organizer (event creator) is considered the owner and has deletion rights.
+
+## Related Features
+
+- [Registrations](/features/registrations) - How users sign up for events
+- [Announcements](/features/announcements) - Communicate with registered participants
+- [WhatsApp Notifications](/features/whatsapp-notifications) - Automated event reminders

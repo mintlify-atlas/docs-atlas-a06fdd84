@@ -1,0 +1,103 @@
+---
+title: 'Registrations Overview'
+description: 'Manage event registrations, approvals, and check-ins'
+---
+
+## Introduction
+
+The Registrations API allows users to register for events, organizers to manage registration approvals, and handle check-ins during events. The registration workflow adapts based on event settings like `requireApproval` and `capacity`.
+
+## Registration Status Workflow
+
+Registrations can have one of four statuses:
+
+<AccordionGroup>
+  <Accordion title="PENDING">
+    Registration is awaiting organizer approval. This status is automatically assigned when registering for an event where `requireApproval` is `true`.
+  </Accordion>
+  
+  <Accordion title="APPROVED">
+    Registration has been approved. Users with approved registrations can attend the event and be checked in. This status is:
+    - Automatically assigned when `requireApproval` is `false` and capacity allows
+    - Set by organizers when manually approving pending/waitlisted registrations
+  </Accordion>
+  
+  <Accordion title="REJECTED">
+    Registration has been declined by an organizer. Can only be set by organizers for pending or waitlisted registrations.
+  </Accordion>
+  
+  <Accordion title="WAITLIST">
+    Registration is on a waiting list. Currently used for future capacity management features.
+  </Accordion>
+</AccordionGroup>
+
+## Registration Behavior
+
+When a user registers for an event:
+
+1. **Auto-Approval** (`requireApproval: false`)
+   - Registration is immediately set to `APPROVED` if capacity allows
+   - Event reminder is automatically scheduled for 1 day before the event
+   - Registration fails if capacity is reached
+
+2. **Manual Approval** (`requireApproval: true`)
+   - Registration is set to `PENDING`
+   - Organizers must manually approve or reject the registration
+   - Event reminder is scheduled only after approval
+
+## Check-In Process
+
+Organizers can check attendees in during events:
+
+- Sets the `checkedInAt` timestamp to the current time
+- Sends a notification to the user confirming check-in
+- Can be reversed using the unregister attendance endpoint
+- Only organizers can perform check-ins
+
+## Available Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Register" icon="user-plus" href="/api/registrations/create">
+    Register for an event
+  </Card>
+  <Card title="Unregister" icon="user-minus" href="/api/registrations/create#unregister">
+    Cancel an event registration
+  </Card>
+  <Card title="Check In" icon="check" href="/api/registrations/check-in">
+    Check in a registered attendee
+  </Card>
+  <Card title="Approve Registration" icon="circle-check" href="/api/registrations/create#approve-registration">
+    Approve a pending registration
+  </Card>
+  <Card title="Reject Registration" icon="circle-xmark" href="/api/registrations/create#reject-registration">
+    Reject a pending registration
+  </Card>
+  <Card title="List Registrations" icon="list" href="/api/registrations/create#list-registrations">
+    Get all registrations for an event
+  </Card>
+</CardGroup>
+
+## Key Concepts
+
+### Event Capacity
+
+The `capacity` field on events determines the maximum number of `APPROVED` registrations:
+
+- When `requireApproval: false`, registration fails if capacity is reached
+- When `requireApproval: true`, pending registrations can exceed capacity, but approvals are blocked at capacity
+- Only `APPROVED` registrations count toward capacity
+
+### Organizer Permissions
+
+Certain endpoints require organizer permissions:
+
+- Check-in/uncheck-in attendees
+- Approve/reject pending registrations
+- List all registrations for an event
+
+### Restrictions
+
+- Event organizers cannot register for their own events
+- Users cannot register twice for the same event
+- Only `PENDING` and `WAITLIST` registrations can be approved or rejected
+- Registrations cannot be approved if the event is at capacity

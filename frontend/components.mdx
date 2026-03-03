@@ -1,0 +1,428 @@
+---
+title: UI Components
+description: Reusable component library for the DragonHacks Event Platform
+---
+
+## Component Architecture
+
+The frontend uses a layered component structure with:
+
+- **Base UI components** in `src/components/ui/` (buttons, cards, inputs)
+- **Feature components** in `src/components/` organized by domain
+- **Page-specific components** co-located with route files in `src/app/`
+
+All components leverage:
+- **Radix UI** primitives for accessibility
+- **CVA (Class Variance Authority)** for variant management
+- **Tailwind CSS** for styling
+- **TypeScript** for type safety
+
+## Base UI Components
+
+### Button
+
+A flexible button component with multiple variants and sizes.
+
+```tsx
+// src/components/ui/button.tsx
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
+import { cn } from "@/lib/utils"
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-white hover:bg-destructive/90",
+        outline: "border bg-background shadow-xs hover:bg-accent",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2",
+        xs: "h-6 gap-1 rounded-md px-2 text-xs",
+        sm: "h-8 rounded-md gap-1.5 px-3",
+        lg: "h-10 rounded-md px-6",
+        icon: "size-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot.Root : "button"
+
+  return (
+    <Comp
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+```
+
+#### Usage
+
+```tsx
+import { Button } from "@/components/ui/button"
+
+// Default button
+<Button>Click me</Button>
+
+// Variant examples
+<Button variant="destructive">Delete</Button>
+<Button variant="outline">Cancel</Button>
+<Button variant="ghost">Menu</Button>
+
+// Size variations
+<Button size="sm">Small</Button>
+<Button size="lg">Large</Button>
+<Button size="icon"><Icon /></Button>
+
+// As child (renders as Link)
+<Button asChild>
+  <Link href="/discover">Discover Events</Link>
+</Button>
+```
+
+### Card
+
+A versatile card component system with multiple sub-components.
+
+```tsx
+// src/components/ui/card.tsx
+import * as React from "react"
+import { cn } from "@/lib/utils"
+
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("grid items-start gap-2 px-6", className)}
+      {...props}
+    />
+  )
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("leading-none font-semibold", className)}
+      {...props}
+    />
+  )
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  )
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div className={cn("px-6", className)} {...props} />
+  )
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div className={cn("flex items-center px-6", className)} {...props} />
+  )
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+  CardContent,
+}
+```
+
+#### Usage
+
+```tsx
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card"
+
+<Card>
+  <CardHeader>
+    <CardTitle>Event Registration</CardTitle>
+    <CardDescription>Sign up for this amazing hackathon</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <p>Registration details here...</p>
+  </CardContent>
+</Card>
+```
+
+### Input
+
+A styled input component with form integration support.
+
+```tsx
+// src/components/ui/input.tsx (typical structure)
+<Input
+  type="email"
+  placeholder="Email"
+  value={email}
+  onChange={(e) => setEmail(e.target.value)}
+  required
+/>
+```
+
+### Dialog
+
+Modal dialog component for overlays and popups.
+
+```tsx
+// src/components/ui/dialog.tsx
+// Used for announcements, confirmations, and forms
+```
+
+### Skeleton
+
+Loading placeholder component for content states.
+
+```tsx
+// src/components/ui/skeleton.tsx
+// Used in event-card-skeleton and event-detail-skeleton
+```
+
+## Feature Components
+
+### Authentication Components
+
+#### HeaderAuth
+
+User authentication UI in the header with sign-in/sign-out functionality.
+
+```tsx
+// src/components/auth/header-auth.tsx
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { User, LogOut } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
+
+export function HeaderAuth({ signInVariant = "default" }) {
+  const router = useRouter();
+  const { data: session, isPending } = authClient.useSession();
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    router.push("/discover");
+  };
+
+  if (!session) {
+    return (
+      <Button variant={signInVariant} asChild>
+        <Link href="/signin">Sign In</Link>
+      </Button>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <Button variant="ghost">
+        <User className="h-4 w-4" />
+        <span>{session.user?.name ?? "Profile"}</span>
+      </Button>
+      {/* Dropdown menu for sign out */}
+    </div>
+  );
+}
+```
+
+#### OTPVerificationWizard
+
+Phone number OTP verification flow component.
+
+```tsx
+// src/components/auth/otp-verification-wizard.tsx
+// Handles multi-step OTP verification for phone auth
+```
+
+### Discovery Components
+
+#### EventCard
+
+Displays event information in a card format with visual indicators.
+
+```tsx
+// src/components/discover/event-card.tsx
+"use client";
+
+import Link from "next/link";
+import { Calendar, MapPin, Users, Monitor, Building2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { formatEventDate } from "@/lib/date";
+
+const TYPE_STYLES: Record<string, string> = {
+  SEMINAR: "bg-violet-100 text-violet-700 dark:bg-violet-900/50",
+  WORKSHOP: "bg-teal-100 text-teal-700 dark:bg-teal-900/50",
+  COMPETITION: "bg-rose-100 text-rose-700 dark:bg-rose-900/50",
+  BOOTCAMP: "bg-blue-100 text-blue-700 dark:bg-blue-900/50",
+};
+
+export function EventCard({ event }: { event: EventItem }) {
+  const going = event.peopleRegistered?.length ?? 0;
+  const isOnline = event.locationType === "ONLINE";
+
+  return (
+    <Link
+      href={`/events/${event.id}`}
+      className="group flex gap-4 rounded-2xl border p-4 hover:shadow-md"
+    >
+      {/* Event thumbnail */}
+      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl">
+        {event.bannerUrl ? (
+          <img src={event.bannerUrl} alt="" />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            {event.name.slice(0, 2).toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        {/* Event type badge */}
+        <div className="mb-2 flex gap-2">
+          <span className={cn("rounded-full px-2.5 py-1 text-xs", TYPE_STYLES[event.type])}>
+            {event.type}
+          </span>
+          <span className="flex items-center gap-1.5 text-xs">
+            {isOnline ? <Monitor /> : <Building2 />}
+            {isOnline ? "Online" : "In person"}
+          </span>
+        </div>
+
+        <p className="flex items-center gap-1.5 text-xs">
+          <Calendar className="h-3.5 w-3.5" />
+          {formatEventDate(event.startAt)}
+        </p>
+        <h3 className="font-semibold line-clamp-1">{event.name}</h3>
+        <p className="flex items-center gap-1.5 text-xs line-clamp-1">
+          <MapPin className="h-3.5 w-3.5" />
+          {event.locationUrl || event.description}
+        </p>
+        {going > 0 && (
+          <p className="flex items-center gap-1 text-xs">
+            <Users className="h-3.5 w-3.5" />
+            {going} going
+          </p>
+        )}
+      </div>
+    </Link>
+  );
+}
+```
+
+#### DiscoverEvents
+
+Main discovery component that fetches and displays events.
+
+```tsx
+// src/components/discover/discover-events.tsx
+// Client component using orpc and Tanstack Query
+```
+
+#### DiscoverHeader
+
+Header navigation for the discovery page.
+
+```tsx
+// src/components/discover/discover-header.tsx
+// Includes search and filtering UI
+```
+
+#### CategoryCard
+
+Visual card for browsing event categories.
+
+```tsx
+// src/components/discover/category-card.tsx
+// Links to filtered event views
+```
+
+### Utility Components
+
+#### ThemeToggle
+
+Dark/light mode switcher.
+
+```tsx
+// src/components/theme-toggle.tsx
+// Toggle between light and dark themes
+```
+
+#### PathwayLogo
+
+Application logo component.
+
+```tsx
+// src/components/pathway-logo.tsx
+// SVG or image logo for branding
+```
+
+## Icons
+
+The application uses **Lucide React** for consistent, lightweight icons:
+
+```tsx
+import { Calendar, MapPin, Users, Monitor, Building2, Sparkles, LogOut } from "lucide-react";
+
+<Calendar className="h-4 w-4" />
+<MapPin className="h-3.5 w-3.5" />
+```
+
+Common icons:
+- `Calendar` - Dates and scheduling
+- `MapPin` - Locations
+- `Users` - Attendee counts
+- `Monitor` - Online events
+- `Building2` - In-person events
+- `Sparkles` - Branding/highlights
+- `LogOut` - Sign out action

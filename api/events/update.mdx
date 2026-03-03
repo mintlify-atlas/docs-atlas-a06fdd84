@@ -1,0 +1,174 @@
+---
+title: 'Update Event'
+api: 'PUT /events/{id}'
+---
+
+Update an existing event. Only event organizers can update their events.
+
+## Authentication
+
+Required. You must be an organizer of the event to update it.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the event to update.
+</ParamField>
+
+## Request Body
+
+<ParamField body="name" type="string" required>
+  Event name. Must not be empty.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Event description. Optional.
+</ParamField>
+
+<ParamField body="startAt" type="string" required>
+  Event start date and time (ISO 8601 format).
+</ParamField>
+
+<ParamField body="endAt" type="string" required>
+  Event end date and time (ISO 8601 format). Must be after `startAt`.
+</ParamField>
+
+<ParamField body="bannerMediaKey" type="string">
+  Media key for the event banner. Obtain this by calling the [banner upload URL endpoint](/api/events/banner-upload) first.
+</ParamField>
+
+<ParamField body="locationUrl" type="string" required>
+  URL or address for the event location (e.g., Zoom link, Google Meet link, or physical address).
+</ParamField>
+
+<ParamField body="locationType" type="string" required>
+  Location type.
+  
+  **Possible values:**
+  - `ONLINE` - Online event
+  - `OFFLINE` - Offline/in-person event
+</ParamField>
+
+<ParamField body="requireApproval" type="boolean" required>
+  Whether registrations require organizer approval before being confirmed.
+</ParamField>
+
+<ParamField body="capacity" type="number" required>
+  Maximum number of attendees allowed.
+</ParamField>
+
+<ParamField body="visibility" type="string" required>
+  Event visibility.
+  
+  **Possible values:**
+  - `PUBLIC` - Visible to all users
+  - `PRIVATE` - Visible only to invited users
+</ParamField>
+
+<ParamField body="category" type="string" required>
+  Event category.
+  
+  **Possible values:**
+  - `TECH` - Technology
+  - `SCIENCE` - Science
+  - `MATH` - Mathematics
+  - `BIOLOGY` - Biology
+  - `SPORTS` - Sports
+  - `SOCIAL_SCIENCE` - Social Science
+  - `OTHER` - Other
+</ParamField>
+
+<ParamField body="type" type="string" required>
+  Event type.
+  
+  **Possible values:**
+  - `SEMINAR` - Seminar
+  - `WORKSHOP` - Workshop
+  - `COMPETITION` - Competition
+  - `BOOTCAMP` - Bootcamp
+</ParamField>
+
+## Response
+
+Returns `204 No Content` on success.
+
+## Example Request
+
+```bash
+curl -X PUT https://api.dragonhacks.com/events/clx1a2b3c4d5e6f7g8h9i0j1 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Advanced React Patterns",
+    "description": "Deep dive into advanced React patterns and best practices.",
+    "startAt": "2026-04-15T14:00:00.000Z",
+    "endAt": "2026-04-15T18:00:00.000Z",
+    "bannerMediaKey": "events/banners/550e8400-e29b-41d4-a716-446655440000",
+    "locationUrl": "https://zoom.us/j/987654321",
+    "locationType": "ONLINE",
+    "requireApproval": true,
+    "capacity": 30,
+    "visibility": "PUBLIC",
+    "category": "TECH",
+    "type": "WORKSHOP"
+  }'
+```
+
+## Example Response
+
+```
+204 No Content
+```
+
+## Error Responses
+
+<ResponseField name="400 Bad Request">
+  Invalid request data or `startAt` is not before `endAt`.
+  
+  ```json
+  {
+    "code": "BAD_REQUEST",
+    "message": "startAt must be before endAt"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="401 Unauthorized">
+  Missing or invalid authentication token.
+  
+  ```json
+  {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="403 Forbidden">
+  You are not an organizer of this event.
+  
+  ```json
+  {
+    "code": "FORBIDDEN",
+    "message": "You do not have permission to update this event"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="404 Not Found">
+  Event with the specified ID does not exist.
+  
+  ```json
+  {
+    "code": "NOT_FOUND",
+    "message": "Event not found"
+  }
+  ```
+</ResponseField>
+
+## Notes
+
+- Only event organizers can update events
+- Unlike the create endpoint, `locationType` is required in the update request
+- All fields must be provided, even if they haven't changed (full update, not partial)
+- To update the banner image, first call the [banner upload endpoint](/api/events/banner-upload) to get a new `bannerMediaKey`

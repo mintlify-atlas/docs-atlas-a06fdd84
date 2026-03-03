@@ -1,0 +1,336 @@
+---
+title: WhatsApp Notifications
+description: Automated event reminders and notifications via WhatsApp
+---
+
+## Overview
+
+DragonHacks integrates WhatsApp notifications to keep participants engaged with multi-channel communication including event reminders, registration updates, and announcements.
+
+## Notification Service
+
+The notification service provides a unified interface for sending messages via email and WhatsApp:
+
+```typescript
+// apps/backend/src/notification/notification.service.ts:8-13
+export interface NotifyUserPayload {
+  subject: string;
+  body: string;
+  html?: string;
+  whatsappText?: string;
+}
+```
+
+### Sending Notifications to Users
+
+```typescript
+// apps/backend/src/notification/notification.service.ts:31-62
+/**
+ * Send a notification to a user via email and WhatsApp (best-effort for each channel).
+ */
+async notifyUser(userId: string, payload: NotifyUserPayload): Promise<void> {
+  const user = await this.prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, phoneNumber: true, name: true },
+  });
+  if (!user) {
+    this.logger.warn(`Cannot notify: user ${userId} not found`);
+    return;
+  }
+
+  // Email
+  if (user.email) {
+    await this.emailService
+      .sendEmail({
+        to: user.email,
+        subject: payload.subject,
+        body: payload.body,
+        html: payload.html,
+      })
+      .catch((err) => this.logger.error(`Failed to queue email for ${userId}`, err));
+  }
+
+  // WhatsApp
+  if (user.phoneNumber && payload.whatsappText) {
+    await this.whatsappService
+      .sendMessage(user.phoneNumber, payload.whatsappText)
+      .catch((err) => this.logger.error(`Failed to queue WhatsApp for ${userId}`, err));
+  }
+}
+```
+
+Notifications are sent on a best-effort basis to both channels:
+- If user has an email, send email notification
+- If user has a phone number and `whatsappText` is provided, send WhatsApp message
+
+### Bulk Notifications
+
+For broadcasting to multiple users (e.g., event announcements):
+
+```typescript
+// apps/backend/src/notification/notification.service.ts:64-69
+/**
+ * Notify multiple users at once (e.g. all registrants of an event).
+ */
+async notifyUsers(userIds: string[], payload: NotifyUserPayload): Promise<void> {
+  await Promise.allSettled(userIds.map((id) => this.notifyUser(id, payload)));
+}
+```
+
+## WhatsApp Service
+
+The WhatsApp service uses BullMQ to queue messages for delivery:
+
+```typescript
+// apps/backend/src/whatsapp/whatsapp.service.ts:13-24
+/**
+ * Enqueue a WhatsApp message to a phone number or JID.
+ * @param to - E.164 phone number (e.g. 6281234567890) or full JID (e.g. 123@g.us)
+ * @param text - Message body
+ */
+async sendMessage(to: string, text: string): Promise<void> {
+  await this.whatsappQueue.add('send-message', {
+    to: to.replace(/^\+/, ''),
+    text,
+  });
+  this.logger.debug(`send-message job queued for ${to}`);
+}
+```
+
+Phone numbers are automatically normalized by removing the leading `+` sign for E.164 format compatibility.
+
+## Event Reminders
+
+### Scheduling Reminders
+
+When a user's registration is approved, a reminder is automatically scheduled for 24 hours before the event:
+
+```typescript
+// apps/backend/src/notification/notification.service.ts:71-98
+/**
+ * Schedule a reminder notification 1 day before an event starts.
+ * Uses BullMQ delayed jobs — if the event is less than 1 day away, sends immediately.
+ */
+async scheduleEventReminder(userId: string, eventId: string): Promise<void> {
+  const event = await this.prisma.event.findUnique({
+    where: { id: eventId },
+    select: { startAt: true, name: true },
+  });
+  if (!event) return;
+
+  const oneDayBefore = event.startAt.getTime() - 24 * 60 * 60 * 1000;
+  const delay = Math.max(0, oneDayBefore - Date.now());
+
+  await this.notificationQueue.add(
+    'event-reminder',
+    { userId, eventId } satisfies EventReminderJobData,
+    {
+      delay,
+      jobId: `event-reminder:${eventId}:${userId}`,
+      removeOnComplete: true,
+    },
+  );
+
+  this.logger.debug(
+    `Scheduled event-reminder for user=${userId} event=${eventId} delay=${Math.round(delay / 1000)}s`,
+  );
+}
+```
+
+**Key features:**
+- Uses BullMQ delayed jobs for reliable scheduling
+- Calculates delay to send 24 hours before event start
+- If event is less than 24 hours away, sends immediately (`Math.max(0, ...)`)
+- Each reminder has a unique job ID based on user and event
+- Jobs are auto-removed on completion
+
+### Canceling Reminders
+
+When a user unregisters from an event, their reminder is automatically canceled:
+
+```typescript
+// apps/backend/src/notification/notification.service.ts:100-110
+/**
+ * Cancel a scheduled reminder (e.g. user unregistered).
+ */
+async cancelEventReminder(userId: string, eventId: string): Promise<void> {
+  const jobId = `event-reminder:${eventId}:${userId}`;
+  const job = await this.notificationQueue.getJob(jobId);
+  if (job) {
+    await job.remove();
+    this.logger.debug(`Cancelled event-reminder jobId=${jobId}`);
+  }
+}
+```
+
+### Reminder Content
+
+The reminder processor formats and sends the notification:
+
+```typescript
+// apps/backend/src/notification/notification.processor.ts:29-65
+private async handleEventReminder(data: EventReminderJobData): Promise<void> {
+  const { userId, eventId } = data;
+
+  const event = await this.prisma.event.findUnique({
+    where: { id: eventId },
+    select: { name: true, startAt: true, locationUrl: true },
+  });
+  if (!event) {
+    this.logger.warn(`event-reminder: event ${eventId} not found, skipping`);
+    return;
+  }
+
+  const startFormatted = event.startAt.toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const subject = `Reminder: "${event.name}" starts tomorrow!`;
+  const body = [
+    `Hi! Just a reminder that "${event.name}" is starting tomorrow.`,
+    ``,
+    `When: ${startFormatted}`,
+    `Where: ${event.locationUrl}`,
+    ``,
+    `See you there!`,
+  ].join('\n');
+
+  const whatsappText = `📅 Reminder: *${event.name}* starts tomorrow (${startFormatted}).\n${event.locationUrl}`;
+
+  await this.notificationService.notifyUser(userId, {
+    subject,
+    body,
+    whatsappText,
+  });
+
+  this.logger.debug(`event-reminder sent for user=${userId} event=${eventId}`);
+}
+```
+
+**Email format:**
+```
+Subject: Reminder: "Workshop Name" starts tomorrow!
+
+Hi! Just a reminder that "Workshop Name" is starting tomorrow.
+
+When: Jan 15, 2026, 2:00 PM
+Where: https://zoom.us/j/123456789
+
+See you there!
+```
+
+**WhatsApp format:**
+```
+📅 Reminder: *Workshop Name* starts tomorrow (Jan 15, 2026, 2:00 PM).
+https://zoom.us/j/123456789
+```
+
+## OTP Verification
+
+WhatsApp is also used for phone number authentication via OTP:
+
+```typescript
+// apps/backend/src/auth/auth.service.ts:71-80
+async sendOtp({
+  phoneNumber,
+  code,
+}: Parameters<PhoneNumberOptions['sendOTP']>[0]): Promise<void> {
+  await this.whatsappQueue.add('send-otp', {
+    phoneNumber,
+    code,
+  });
+  this.logger.debug(`OTP job queued for ${phoneNumber}`);
+}
+```
+
+## Notification Types
+
+DragonHacks sends WhatsApp notifications for:
+
+### 1. Welcome Messages
+Sent when a new user creates an account:
+
+```typescript
+// apps/backend/src/auth/auth.service.ts:96-101
+whatsappText: [
+  `Hi ${displayName}! Welcome to *Pathway*!`,
+  '',
+  'Discover workshops, hackathons, and events tailored for students.',
+  'Start exploring now!',
+].join('\n')
+```
+
+### 2. Registration Approval
+Sent when an organizer approves a pending registration:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:152
+whatsappText: `Your registration for *${event.name}* has been approved! See you there!`
+```
+
+### 3. Check-In Confirmation
+Sent when an attendee is checked in at the event:
+
+```typescript
+// apps/backend/src/events/registrations/registrations.service.ts:96
+whatsappText: `You've been checked in to *${event.name}*. Enjoy the event!`
+```
+
+### 4. Event Announcements
+Sent when organizers broadcast updates:
+
+```typescript
+// apps/backend/src/events/announcements/announcements.service.ts:43
+whatsappText: `📢 *${event.name}*\n\n*${title}*\n${content}`
+```
+
+### 5. Event Reminders
+Automatically sent 24 hours before event start (shown above)
+
+### 6. OTP Codes
+Sent during phone number verification for authentication
+
+## Message Queue Architecture
+
+The platform uses BullMQ for reliable message delivery:
+
+```typescript
+// Queue names
+'whatsapp' - General WhatsApp messages and OTP
+'notification' - Scheduled event reminders
+```
+
+**Benefits:**
+- Asynchronous processing prevents blocking API responses
+- Automatic retries on failure
+- Delayed job support for scheduled reminders
+- Persistent job storage
+- Easy monitoring and debugging
+
+## Best Practices
+
+### Phone Number Format
+Ensure phone numbers are stored in E.164 format:
+- Include country code (e.g., `6281234567890` for Indonesia)
+- No spaces, dashes, or special characters
+- No leading `+` (automatically stripped)
+
+### Message Content
+- Keep messages concise and actionable
+- Use markdown formatting (`*bold*`, `_italic_`)
+- Include relevant links and information
+- Add emojis sparingly for visual emphasis (📅, 📢, ✅)
+
+### Rate Limiting
+Consider implementing rate limits for:
+- Bulk announcement sends
+- OTP requests per user
+- Total daily message volume
+
+## Related Features
+
+- [Authentication](/features/authentication) - Phone number OTP verification
+- [Registrations](/features/registrations) - Approval and check-in notifications
+- [Announcements](/features/announcements) - Broadcasting to participants
+- [Events](/features/events) - Event reminder scheduling

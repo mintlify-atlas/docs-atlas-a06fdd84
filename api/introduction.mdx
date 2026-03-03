@@ -1,0 +1,164 @@
+---
+title: 'API Introduction'
+description: 'Get started with the DragonHacks Event Platform API'
+---
+
+## Overview
+
+The DragonHacks Event Platform API is built on **oRPC** (Open RPC), a type-safe RPC framework that provides automatic client generation, runtime validation, and excellent TypeScript support. The API follows a contract-first approach where all endpoints are defined using strongly-typed contracts.
+
+## Base URL
+
+The API is accessible at:
+
+```
+http://localhost:3001
+```
+
+For production deployments, the base URL will vary based on your hosting environment. Set the `BETTER_AUTH_URL` environment variable to configure the base URL.
+
+## Architecture
+
+### oRPC Framework
+
+The API uses oRPC contracts to define all endpoints. Each contract specifies:
+
+- **Path**: The endpoint URL path
+- **Method**: HTTP method (GET, POST, PUT, DELETE)
+- **Input Schema**: Zod schema for request validation
+- **Output Schema**: Zod schema for response validation
+- **Tags**: Grouping for API documentation
+
+Example contract from `src/users/users.contract.ts:11`:
+
+```typescript
+const getMe = oc.route({
+    path: "/users/me",
+    method: "GET",
+    tags: ["Users"]
+}).output(userSchema)
+```
+
+### API Modules
+
+The API is organized into the following modules defined in `src/contract.ts:4`:
+
+- **Users** - User profile management
+- **Events** - Event CRUD operations and queries
+  - Registrations - Event registration management
+  - Organizers - Event organizer management
+  - Announcements - Event announcements
+
+### Request Context
+
+Every oRPC request includes a global context defined in `src/app.module.ts:27`:
+
+```typescript
+interface ORPCGlobalContext {
+  request: Request;
+  session?: Awaited<ReturnType<typeof auth.api.getSession>>;
+}
+```
+
+The context provides:
+- Raw HTTP request object
+- User session (when authenticated)
+
+## CORS Configuration
+
+The API enables CORS with the following configuration from `src/main.ts:6`:
+
+```typescript
+app.enableCors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true,
+});
+```
+
+**Important**: 
+- Only requests from the URL specified in `FRONTEND_URL` environment variable are allowed
+- Credentials (cookies, authorization headers) are supported
+- This is essential for session-based authentication
+
+## Making API Requests
+
+### Basic Request
+
+```bash
+curl -X GET http://localhost:3001/events \
+  -H "Content-Type: application/json"
+```
+
+### With Query Parameters
+
+oRPC automatically coerces and validates query parameters based on the input schema:
+
+```bash
+curl -X GET "http://localhost:3001/events?limit=10&category=hackathon" \
+  -H "Content-Type: application/json"
+```
+
+### POST Request
+
+```bash
+curl -X POST http://localhost:3001/events \
+  -H "Content-Type: application/json" \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN" \
+  -d '{
+    "title": "DragonHacks 2026",
+    "description": "Annual hackathon event",
+    "startAt": "2026-04-15T09:00:00Z",
+    "endAt": "2026-04-17T18:00:00Z",
+    "locationUrl": "https://maps.google.com/venue"
+  }'
+```
+
+## Error Handling
+
+The API uses oRPC's standardized error format. Common error codes include:
+
+| Code | Description |
+|------|-------------|
+| `BAD_REQUEST` | Invalid input or validation error |
+| `UNAUTHORIZED` | Missing or invalid authentication |
+| `FORBIDDEN` | Insufficient permissions |
+| `NOT_FOUND` | Resource not found |
+
+Example error response:
+
+```json
+{
+  "code": "UNAUTHORIZED",
+  "message": "Authentication required"
+}
+```
+
+## Schema Validation
+
+All requests and responses are validated using Zod schemas. The API includes:
+
+- **Smart Coercion Plugin** - Automatically converts string query parameters to proper types (numbers, dates, booleans)
+- **Zod to JSON Schema** - Generates OpenAPI-compatible schemas from Zod definitions
+
+Invalid requests will return detailed validation errors explaining what went wrong.
+
+## Development Features
+
+In development mode (`NODE_ENV=development`), the API includes:
+
+- **OpenAPI Documentation** - Auto-generated API docs available via the Better Auth OpenAPI plugin
+- **Reference Endpoints** - Additional debugging endpoints
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Learn how to authenticate requests using Better Auth
+  </Card>
+  <Card title="Users API" icon="users" href="/api/users/get-me">
+    Manage user profiles and account information
+  </Card>
+  <Card title="Events API" icon="calendar" href="/api/events/get-all">
+    Create and manage hackathon events
+  </Card>
+</CardGroup>

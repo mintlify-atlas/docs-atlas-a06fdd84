@@ -1,0 +1,234 @@
+---
+title: 'Get All Events'
+api: 'GET /events'
+---
+
+Retrieve a paginated list of events with optional filtering by category, visibility, type, title, and location type.
+
+## Authentication
+
+No authentication required. Public endpoint.
+
+## Query Parameters
+
+<ParamField query="category" type="string">
+  Filter events by category.
+  
+  **Possible values:**
+  - `TECH` - Technology events
+  - `SCIENCE` - Science events
+  - `MATH` - Mathematics events
+  - `BIOLOGY` - Biology events
+  - `SPORTS` - Sports events
+  - `SOCIAL_SCIENCE` - Social science events
+  - `OTHER` - Other categories
+</ParamField>
+
+<ParamField query="visibility" type="string">
+  Filter events by visibility.
+  
+  **Possible values:**
+  - `PUBLIC` - Publicly visible events
+  - `PRIVATE` - Private events
+</ParamField>
+
+<ParamField query="type" type="string">
+  Filter events by type.
+  
+  **Possible values:**
+  - `SEMINAR` - Seminar events
+  - `WORKSHOP` - Workshop events
+  - `COMPETITION` - Competition events
+  - `BOOTCAMP` - Bootcamp events
+</ParamField>
+
+<ParamField query="title" type="string">
+  Search events by title (partial match).
+</ParamField>
+
+<ParamField query="locationType" type="string">
+  Filter events by location type.
+  
+  **Possible values:**
+  - `ONLINE` - Online events
+  - `OFFLINE` - Offline/in-person events
+</ParamField>
+
+<ParamField query="limit" type="number" default="20">
+  Number of events to return per page. Minimum: 1, Maximum: 50.
+</ParamField>
+
+<ParamField query="cursor" type="string">
+  Cursor for pagination. Use the `nextCursor` value from the previous response to get the next page.
+</ParamField>
+
+## Response
+
+<ResponseField name="items" type="array">
+  Array of event objects.
+  
+  <ResponseField name="id" type="string">
+    Unique identifier for the event.
+  </ResponseField>
+  
+  <ResponseField name="name" type="string">
+    Event name.
+  </ResponseField>
+  
+  <ResponseField name="description" type="string | null">
+    Event description.
+  </ResponseField>
+  
+  <ResponseField name="startAt" type="string">
+    Event start date and time (ISO 8601 format).
+  </ResponseField>
+  
+  <ResponseField name="endAt" type="string">
+    Event end date and time (ISO 8601 format).
+  </ResponseField>
+  
+  <ResponseField name="bannerUrl" type="string | null">
+    URL to the event banner image.
+  </ResponseField>
+  
+  <ResponseField name="locationUrl" type="string">
+    URL or address for the event location.
+  </ResponseField>
+  
+  <ResponseField name="locationType" type="string">
+    Location type: `ONLINE` or `OFFLINE`.
+  </ResponseField>
+  
+  <ResponseField name="requireApproval" type="boolean">
+    Whether registration requires organizer approval.
+  </ResponseField>
+  
+  <ResponseField name="capacity" type="number">
+    Maximum number of attendees.
+  </ResponseField>
+  
+  <ResponseField name="visibility" type="string">
+    Event visibility: `PUBLIC` or `PRIVATE`.
+  </ResponseField>
+  
+  <ResponseField name="category" type="string">
+    Event category (TECH, SCIENCE, MATH, BIOLOGY, SPORTS, SOCIAL_SCIENCE, OTHER).
+  </ResponseField>
+  
+  <ResponseField name="type" type="string">
+    Event type (SEMINAR, WORKSHOP, COMPETITION, BOOTCAMP).
+  </ResponseField>
+  
+  <ResponseField name="createdAt" type="string">
+    Event creation timestamp (ISO 8601 format).
+  </ResponseField>
+  
+  <ResponseField name="peopleRegistered" type="array">
+    Array of registered users.
+    
+    <ResponseField name="id" type="string">
+      User ID.
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      User name.
+    </ResponseField>
+    
+    <ResponseField name="profilePictureUrl" type="string | null">
+      User profile picture URL.
+    </ResponseField>
+  </ResponseField>
+  
+  <ResponseField name="organizers" type="array">
+    Array of event organizers.
+    
+    <ResponseField name="id" type="string">
+      User ID.
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      User name.
+    </ResponseField>
+    
+    <ResponseField name="profilePictureUrl" type="string | null">
+      User profile picture URL.
+    </ResponseField>
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string | undefined">
+  Cursor for the next page of results. Use this value in the `cursor` parameter to fetch the next page.
+</ResponseField>
+
+<ResponseField name="hasNextPage" type="boolean">
+  Indicates whether there are more results available.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl https://api.dragonhacks.com/events?category=TECH&type=WORKSHOP&limit=10
+```
+
+## Example Response
+
+```json
+{
+  "items": [
+    {
+      "id": "clx1a2b3c4d5e6f7g8h9i0j1",
+      "name": "Introduction to React",
+      "description": "Learn the fundamentals of React.js in this hands-on workshop.",
+      "startAt": "2026-04-15T14:00:00.000Z",
+      "endAt": "2026-04-15T17:00:00.000Z",
+      "bannerUrl": "https://storage.dragonhacks.com/events/banners/react-workshop.jpg",
+      "locationUrl": "https://zoom.us/j/123456789",
+      "locationType": "ONLINE",
+      "requireApproval": false,
+      "capacity": 50,
+      "visibility": "PUBLIC",
+      "category": "TECH",
+      "type": "WORKSHOP",
+      "createdAt": "2026-03-01T10:00:00.000Z",
+      "peopleRegistered": [
+        {
+          "id": "user_123",
+          "name": "Jane Doe",
+          "profilePictureUrl": "https://storage.dragonhacks.com/profiles/jane.jpg"
+        },
+        {
+          "id": "user_456",
+          "name": "John Smith",
+          "profilePictureUrl": null
+        }
+      ],
+      "organizers": [
+        {
+          "id": "org_789",
+          "name": "Sarah Johnson",
+          "profilePictureUrl": "https://storage.dragonhacks.com/profiles/sarah.jpg"
+        }
+      ]
+    }
+  ],
+  "nextCursor": "clx1a2b3c4d5e6f7g8h9i0j1",
+  "hasNextPage": true
+}
+```
+
+## Pagination
+
+This endpoint uses cursor-based pagination:
+
+1. Make an initial request with optional `limit` parameter
+2. Check the `hasNextPage` field in the response
+3. If `true`, use the `nextCursor` value in your next request
+4. Repeat until `hasNextPage` is `false`
+
+```bash
+# First page
+curl https://api.dragonhacks.com/events?limit=20
+
+# Next page
+curl https://api.dragonhacks.com/events?limit=20&cursor=clx1a2b3c4d5e6f7g8h9i0j1
+```

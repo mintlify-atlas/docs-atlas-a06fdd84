@@ -1,0 +1,429 @@
+---
+title: State Management
+description: API client setup, data fetching, and authentication state
+---
+
+## State Management Architecture
+
+The DragonHacks Event Platform uses a modern, type-safe approach to state management:
+
+- **Tanstack Query** for server state and data fetching
+- **oRPC** for type-safe API communication
+- **Better Auth** for authentication state
+- **React hooks** for local component state
+
+## API Client Setup
+
+### oRPC Client
+
+The application uses **oRPC** for type-safe, contract-based API communication with the backend.
+
+```typescript
+// src/lib/orpc.ts
+import type { ContractRouterClient } from "@orpc/contract";
+import type { JsonifiedClient } from "@orpc/openapi-client";
+import { createORPCClient } from "@orpc/client";
+import { OpenAPILink } from "@orpc/openapi-client/fetch";
+import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+import { contract } from "backend/contract";
+import { getApiBaseUrl } from "./api";
+
+// Create OpenAPI link with credentials
+const link = new OpenAPILink(contract, {
+  url: getApiBaseUrl(),
+  fetch: (request, init) =>
+    globalThis.fetch(request, {
+      ...init,
+      credentials: "include", // Send cookies for auth
+    }),
+});
+
+// Create typed client
+const client: JsonifiedClient<ContractRouterClient<typeof contract>> =
+  createORPCClient(link);
+
+// Export Tanstack Query utilities
+export const orpc = createTanstackQueryUtils(client);
+export { client };
+```
+
+**Key features:**
+- **Type-safe:** Full TypeScript types from backend contract
+- **Automatic serialization:** JSON serialization/deserialization
+- **Credentials included:** Cookies sent with every request for auth
+- **Tanstack Query integration:** Built-in hooks for queries and mutations
+
+### API Base URL
+
+```typescript
+// src/lib/api.ts
+const API_BASE =
+  typeof window !== "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"
+    : process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+export function getApiBaseUrl() {
+  return API_BASE;
+}
+```
+
+### Legacy REST API Functions
+
+Some operations still use direct fetch calls:
+
+```typescript
+// src/lib/api.ts
+export async function getEventById(
+  id: string,
+  options?: { signal?: AbortSignal }
+): Promise<EventDetail> {
+  const res = await fetch(`${API_BASE}/events/${id}`, {
+    credentials: "include",
+    signal: options?.signal,
+  });
+  if (!res.ok) {
+    if (res.status === 404) throw new Error("Event not found");
+    throw new Error(`HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function registerForEvent(
+  eventId: string,
+  options?: { signal?: AbortSignal }
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/events/${eventId}/registrations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    signal: options?.signal,
+  });
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("UNAUTHORIZED");
+    throw new Error(`HTTP ${res.status}`);
+  }
+}
+
+export async function createEvent(
+  payload: CreateEventPayload,
+  options?: { signal?: AbortSignal }
+): Promise<{ id: string }> {
+  const res = await fetch(`${API_BASE}/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    credentials: "include",
+    signal: options?.signal,
+  });
+  if (!res.ok) {
+    throw new Error(await res.text() || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+```
+
+## Tanstack Query Integration
+
+### Query Client Setup
+
+The `QueryClient` is configured at the root level:
+
+```tsx
+// src/app/providers.tsx
+"use client";
+
+import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient());
+
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+```
+
+### Using oRPC with Tanstack Query
+
+The `orpc` utility provides type-safe query and mutation hooks:
+
+```tsx
+"use client";
+
+import { orpc } from "@/lib/orpc";
+
+export function DiscoverEvents({ category, title }) {
+  // Type-safe query with automatic refetching
+  const { data: events, isLoading, error } = orpc.events.list.useQuery({
+    input: { category, title },
+  });
+
+  if (isLoading) return <EventCardSkeleton />;
+  if (error) return <div>Error loading events</div>;
+
+  return (
+    <div>
+      {events.map((event) => (
+        <EventCard key={event.id} event={event} />
+      ))}
+    </div>
+  );
+}
+```
+
+### Mutations
+
+Use mutations for creating/updating data:
+
+```tsx
+"use client";
+
+import { orpc } from "@/lib/orpc";
+import { useRouter } from "next/navigation";
+
+export function CreateEventForm() {
+  const router = useRouter();
+  
+  const createEventMutation = orpc.events.create.useMutation({
+    onSuccess: (data) => {
+      router.push(`/events/${data.id}`);
+    },
+  });
+
+  const handleSubmit = async (formData) => {
+    createEventMutation.mutate(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* Form fields */}
+      <button disabled={createEventMutation.isPending}>
+        {createEventMutation.isPending ? "Creating..." : "Create Event"}
+      </button>
+    </form>
+  );
+}
+```
+
+### Query Invalidation
+
+Invalidate queries after mutations to refetch fresh data:
+
+```tsx
+import { useQueryClient } from "@tanstack/react-query";
+
+const queryClient = useQueryClient();
+
+// After registration succeeds
+await registerForEvent(eventId);
+queryClient.invalidateQueries({ queryKey: ["events", eventId] });
+```
+
+## Authentication State
+
+### Better Auth Client
+
+Authentication is handled by **Better Auth**:
+
+```typescript
+// src/lib/auth-client.ts
+import { createAuthClient } from "better-auth/react";
+import { phoneNumberClient } from "better-auth/client/plugins";
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001",
+  basePath: "/auth",
+  plugins: [phoneNumberClient()],
+});
+```
+
+### Auth Hooks
+
+#### useSession
+
+Check current user session:
+
+```tsx
+"use client";
+
+import { authClient } from "@/lib/auth-client";
+
+export function HeaderAuth() {
+  const { data: session, isPending } = authClient.useSession();
+
+  if (isPending) {
+    return <Button disabled>Loading...</Button>;
+  }
+
+  if (!session) {
+    return <Link href="/signin">Sign In</Link>;
+  }
+
+  const userName = session.user?.name ?? session.user?.email ?? "Profile";
+
+  return (
+    <div>
+      <User /> {userName}
+    </div>
+  );
+}
+```
+
+#### Sign In Methods
+
+**Email/Password:**
+
+```tsx
+const { error } = await authClient.signIn.email({
+  email: "user@example.com",
+  password: "password123",
+  callbackURL: "/discover",
+});
+
+if (!error) {
+  window.location.href = "/discover";
+}
+```
+
+**Google OAuth:**
+
+```tsx
+authClient.signIn.social({
+  provider: "google",
+  callbackURL: "/discover",
+});
+```
+
+**Phone Number (OTP):**
+
+```tsx
+// Request OTP
+await authClient.phoneNumber.sendOtp({
+  phoneNumber: "+1234567890",
+});
+
+// Verify OTP
+const { error } = await authClient.signIn.phoneNumber({
+  phoneNumber: "+1234567890",
+  otp: "123456",
+  callbackURL: "/discover",
+});
+```
+
+#### Sign Out
+
+```tsx
+const router = useRouter();
+
+const handleSignOut = async () => {
+  await authClient.signOut();
+  router.push("/discover");
+};
+```
+
+### Sign Up Methods
+
+**Email/Password:**
+
+```tsx
+const { error } = await authClient.signUp.email({
+  email: "newuser@example.com",
+  password: "securepassword",
+  name: "New User",
+  callbackURL: "/discover",
+});
+```
+
+**Phone Number:**
+
+```tsx
+// Request OTP
+await authClient.phoneNumber.sendOtp({
+  phoneNumber: "+1234567890",
+});
+
+// Verify and create account
+const { error } = await authClient.signUp.phoneNumber({
+  phoneNumber: "+1234567890",
+  otp: "123456",
+  name: "New User",
+});
+```
+
+## Local Component State
+
+### useState
+
+For simple component state:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+
+export function SignInForm() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    
+    // Auth logic...
+    
+    setLoading(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {error && <p className="text-destructive">{error}</p>}
+      <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+      <Input value={password} onChange={(e) => setPassword(e.target.value)} />
+      <Button disabled={loading}>
+        {loading ? "Signing in..." : "Sign in"}
+      </Button>
+    </form>
+  );
+}
+```
+
+### useRef
+
+For DOM references and mutable values:
+
+```tsx
+"use client";
+
+import { useRef, useEffect } from "react";
+
+export function Dropdown() {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        // Close dropdown
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return <div ref={ref}>{/* Dropdown content */}</div>;
+}
+```
+
+## Data Flow Summary
+
+1. **User interaction** triggers event (click, form submit)
+2. **Component** calls API function (oRPC mutation or REST fetch)
+3. **API client** sends request with credentials to backend
+4. **Backend** processes request and returns response
+5. **Tanstack Query** caches result and triggers re-render
+6. **Component** updates UI based on new state
+
+This architecture ensures type safety end-to-end and optimal performance through automatic caching and refetching.

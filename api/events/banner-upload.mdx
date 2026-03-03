@@ -1,0 +1,99 @@
+---
+title: 'Get Banner Upload URL'
+api: 'POST /events/banner-upload-url'
+---
+
+Generate a presigned URL for uploading an event banner image. Use this endpoint before creating or updating an event with a banner.
+
+## Authentication
+
+Required. You must be authenticated to request a banner upload URL.
+
+## Request Body
+
+Empty object `{}`
+
+## Response
+
+<ResponseField name="uploadUrl" type="string">
+  Presigned URL for uploading the banner image. Use this URL to upload your file via a PUT request.
+</ResponseField>
+
+<ResponseField name="key" type="string">
+  Storage key for the uploaded banner. Use this value as `bannerMediaKey` when creating or updating an event.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST https://api.dragonhacks.com/events/banner-upload-url \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+## Example Response
+
+```json
+{
+  "uploadUrl": "https://storage.dragonhacks.com/upload?signature=abc123...",
+  "key": "events/banners/550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+## Upload Flow
+
+1. **Request upload URL** - Call this endpoint to get a presigned URL and key
+2. **Upload the file** - Use the `uploadUrl` to upload your banner image
+3. **Create/Update event** - Use the `key` as `bannerMediaKey` in your event request
+
+### Step 1: Get Upload URL
+
+```bash
+curl -X POST https://api.dragonhacks.com/events/banner-upload-url \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### Step 2: Upload Banner Image
+
+```bash
+curl -X PUT "https://storage.dragonhacks.com/upload?signature=abc123..." \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @banner.jpg
+```
+
+### Step 3: Create Event with Banner
+
+```bash
+curl -X POST https://api.dragonhacks.com/events \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Event",
+    "bannerMediaKey": "events/banners/550e8400-e29b-41d4-a716-446655440000",
+    ...
+  }'
+```
+
+## Error Responses
+
+<ResponseField name="401 Unauthorized">
+  Missing or invalid authentication token.
+  
+  ```json
+  {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required"
+  }
+  ```
+</ResponseField>
+
+## Notes
+
+- The presigned URL has an expiration time (typically 15-60 minutes)
+- Upload the file to the `uploadUrl` using a PUT request
+- Supported image formats depend on your storage configuration (typically JPEG, PNG, WebP)
+- The `key` is a unique identifier generated using UUID
+- Store the `key` and use it as `bannerMediaKey` when creating or updating events

@@ -1,0 +1,67 @@
+---
+title: 'Get User by ID'
+api: 'GET /users/{id}'
+---
+
+Retrieves a user's profile information by their unique identifier.
+
+## Authentication
+
+This endpoint does not require authentication.
+
+## Request
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the user to retrieve
+</ParamField>
+
+### Example Request
+
+```bash cURL
+curl -X GET https://api.dragonhacks.com/users/clx1234567890abcdef \
+  -H "Content-Type: application/json"
+```
+
+## Response
+
+Returns a user object for the specified user ID.
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the user
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  The user's display name
+</ResponseField>
+
+<ResponseField name="image" type="string | null" required>
+  URL to the user's profile image. Can be null if no image is set.
+</ResponseField>
+
+<ResponseField name="createdAt" type="date" required>
+  Timestamp when the user account was created
+</ResponseField>
+
+### Example Response
+
+```json 200 - Success
+{
+  "id": "clx1234567890abcdef",
+  "name": "John Smith",
+  "image": "https://cdn.dragonhacks.com/avatars/john-smith.jpg",
+  "createdAt": "2024-01-15T10:30:00.000Z"
+}
+```
+
+```json 404 - Not Found
+{
+  "code": "NOT_FOUND",
+  "message": "User not found"
+}
+```
+
+## Error Responses
+
+| Status Code | Error Code | Description |
+|------------|------------|-------------|
+| 404 | NOT_FOUND | No user found with the specified ID |

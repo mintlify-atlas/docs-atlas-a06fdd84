@@ -1,0 +1,327 @@
+---
+title: Database Setup
+description: Initialize and manage the database using Prisma
+---
+
+The DragonHacks Event Platform uses Prisma ORM with SQLite for database management. This guide covers database initialization, migrations, and seeding.
+
+## Database Overview
+
+### Technology Stack
+
+- **Database**: SQLite (development) with Better-SQLite3 adapter
+- **ORM**: Prisma (v7.4.0)
+- **Location**: `apps/backend/prisma/`
+
+### Schema Structure
+
+The platform uses the following main models:
+
+- **User** - User accounts with Better Auth integration
+- **Session** - User sessions
+- **Account** - OAuth provider accounts
+- **Event** - Hackathon events and workshops
+- **EventOrganizer** - Event organizers and owners
+- **EventRegistration** - User registrations for events
+- **Announcement** - Event announcements
+
+## Prisma Configuration
+
+The Prisma schema is located at `apps/backend/prisma/schema.prisma`:
+
+```prisma
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/@generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+```
+
+<Note>
+  The Prisma client is generated to `apps/backend/src/@generated/prisma` for use in the NestJS application.
+</Note>
+
+## Database Setup
+
+<Steps>
+  <Step title="Navigate to backend directory">
+    ```bash
+    cd apps/backend
+    ```
+  </Step>
+  
+  <Step title="Generate Prisma Client">
+    Generate the Prisma Client based on your schema:
+    
+    <CodeGroup>
+    ```bash pnpm
+    pnpm prisma generate
+    ```
+    
+    ```bash npx
+    npx prisma generate
+    ```
+    
+    ```bash Global Prisma
+    prisma generate
+    ```
+    </CodeGroup>
+    
+    This creates the Prisma Client in `src/@generated/prisma/`.
+  </Step>
+  
+  <Step title="Run database migrations">
+    Apply all migrations to create the database schema:
+    
+    <CodeGroup>
+    ```bash pnpm
+    pnpm prisma migrate deploy
+    ```
+    
+    ```bash Development
+    pnpm prisma migrate dev
+    ```
+    
+    ```bash npx
+    npx prisma migrate deploy
+    ```
+    </CodeGroup>
+    
+    <Note>
+      Use `migrate deploy` for production and `migrate dev` for development. The dev command will also regenerate the Prisma Client.
+    </Note>
+  </Step>
+  
+  <Step title="Seed the database (optional)">
+    Populate the database with sample data:
+    
+    <CodeGroup>
+    ```bash pnpm
+    pnpm db:seed
+    ```
+    
+    ```bash npx
+    npx prisma db seed
+    ```
+    </CodeGroup>
+    
+    This runs `prisma/seed.ts` which creates:
+    - 3 sample users (Alice, Bob, Carol)
+    - 3 sample events (Tech Workshop, Science Fair, Hackathon Finals)
+    - Event organizers and registrations
+  </Step>
+</Steps>
+
+## Database Migrations
+
+### Creating a New Migration
+
+When you modify the Prisma schema, create a migration:
+
+<Steps>
+  <Step title="Edit schema">
+    Make changes to `apps/backend/prisma/schema.prisma`
+  </Step>
+  
+  <Step title="Create migration">
+    ```bash
+    pnpm prisma migrate dev --name description_of_changes
+    ```
+    
+    Example:
+    ```bash
+    pnpm prisma migrate dev --name add_user_roles
+    ```
+  </Step>
+  
+  <Step title="Review migration">
+    Prisma generates SQL migration files in `prisma/migrations/`
+  </Step>
+</Steps>
+
+### Applying Migrations
+
+For production or existing databases:
+
+```bash
+pnpm prisma migrate deploy
+```
+
+This applies all pending migrations without prompting.
+
+### Reset Database
+
+<Warning>
+  This will delete all data and recreate the database!
+</Warning>
+
+```bash
+pnpm prisma migrate reset
+```
+
+This command:
+1. Drops the database
+2. Recreates it
+3. Applies all migrations
+4. Runs the seed script
+
+## Prisma Studio
+
+Prisma Studio provides a GUI to view and edit database data:
+
+```bash
+pnpm prisma studio
+```
+
+This opens a browser window at `http://localhost:5555` where you can:
+- Browse all tables
+- View records
+- Create, update, and delete data
+- Filter and search records
+
+## Database Seeding
+
+The seed script (`prisma/seed.ts`) creates sample data for development.
+
+### Seed Data Includes
+
+#### Users
+- **Alice** (`alice@example.com`) - Event organizer
+- **Bob** (`bob@example.com`) - Event organizer
+- **Carol** (`carol@example.com`) - Event participant
+
+#### Events
+1. **Tech Workshop: Intro to TypeScript**
+   - Type: WORKSHOP
+   - Category: TECH
+   - Location: Online
+   - Capacity: 50
+   - Starts: Next week
+
+2. **Science Fair 2025**
+   - Type: SEMINAR
+   - Category: SCIENCE
+   - Location: Offline
+   - Capacity: 100
+   - Requires approval: Yes
+
+3. **Hackathon Finals**
+   - Type: COMPETITION
+   - Category: TECH
+   - Location: Offline
+   - Capacity: 30
+
+### Custom Seed Script
+
+To modify the seed data, edit `apps/backend/prisma/seed.ts` and run:
+
+```bash
+pnpm db:seed
+```
+
+## Database Configuration
+
+The database connection is configured via the `DATABASE_URL` environment variable in `apps/backend/.env`:
+
+```bash
+# Development (SQLite)
+DATABASE_URL="file:./dev.db"
+
+# Production (absolute path)
+DATABASE_URL="file:/var/lib/dragonhacks/production.db"
+```
+
+## Common Operations
+
+### View Database Schema
+
+```bash
+pnpm prisma db pull
+```
+
+### Format Schema File
+
+```bash
+pnpm prisma format
+```
+
+### Validate Schema
+
+```bash
+pnpm prisma validate
+```
+
+### Generate Prisma Client Only
+
+```bash
+pnpm prisma generate
+```
+
+## Prisma Adapter Configuration
+
+The backend uses the Better-SQLite3 adapter for improved performance:
+
+```typescript
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaClient } from '../src/@generated/prisma/client';
+
+const url = process.env.DATABASE_URL || 'file:dev.db';
+const adapter = new PrismaBetterSqlite3({ url });
+const prisma = new PrismaClient({ adapter });
+```
+
+This adapter provides:
+- Synchronous database operations
+- Better performance for SQLite
+- Compatible with NestJS and Better Auth
+
+## Troubleshooting
+
+### Migration Conflicts
+
+If migrations are out of sync:
+
+```bash
+pnpm prisma migrate resolve --rolled-back "migration_name"
+pnpm prisma migrate deploy
+```
+
+### Prisma Client Out of Sync
+
+If you see "Prisma Client is out of sync with schema":
+
+```bash
+pnpm prisma generate
+```
+
+### Database Lock Issues
+
+If SQLite reports a locked database:
+
+1. Stop all running instances of the backend
+2. Check for zombie processes: `ps aux | grep node`
+3. Restart the application
+
+### Reset Everything
+
+For a complete fresh start:
+
+```bash
+rm -f prisma/dev.db
+rm -rf src/@generated/prisma
+pnpm prisma generate
+pnpm prisma migrate dev
+pnpm db:seed
+```
+
+## Next Steps
+
+With the database configured, you can now:
+
+1. Start the backend application: `pnpm start:dev`
+2. Access Prisma Studio to view data: `pnpm prisma studio`
+3. Begin developing features with full database support

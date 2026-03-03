@@ -1,0 +1,256 @@
+---
+title: Authentication
+description: Learn how DragonHacks implements secure authentication using Better Auth
+---
+
+## Overview
+
+DragonHacks uses [Better Auth](https://better-auth.com) for authentication, providing multiple sign-in methods including email/password, Google OAuth, and phone number verification with WhatsApp OTP.
+
+## Authentication Methods
+
+### Email & Password
+
+Users can sign up and sign in using traditional email and password credentials:
+
+```typescript
+// apps/backend/src/auth/auth.base.ts:26-28
+emailAndPassword: {
+  enabled: true,
+}
+```
+
+### Google OAuth
+
+Google social login is supported for quick authentication:
+
+```typescript
+// apps/backend/src/auth/auth.base.ts:30-36
+socialProviders: {
+  google: {
+    enabled: true,
+    clientId: process.env.GOOGLE_CLIENT_ID as string,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+  }
+}
+```
+
+### Phone Number Authentication
+
+Users can authenticate using their phone number with OTP verification sent via WhatsApp:
+
+```typescript
+// apps/backend/src/auth/auth.service.ts:24-31
+phoneNumber: {
+  sendOTP: (params) => this.sendOtp(params),
+  signUpOnVerification: {
+    getTempEmail: (phoneNumber) => {
+      return `${phoneNumber}@rotom.com`;
+    },
+  },
+}
+```
+
+When a user requests OTP verification, the code is queued to WhatsApp:
+
+```typescript
+// apps/backend/src/auth/auth.service.ts:71-80
+async sendOtp({
+  phoneNumber,
+  code,
+}: Parameters<PhoneNumberOptions['sendOTP']>[0]): Promise<void> {
+  await this.whatsappQueue.add('send-otp', {
+    phoneNumber,
+    code,
+  });
+  this.logger.debug(`OTP job queued for ${phoneNumber}`);
+}
+```
+
+## User Model
+
+The User model in Prisma schema includes:
+
+```prisma
+// apps/backend/prisma/schema.prisma:15-35
+model User {
+  id                  String    @id
+  name                String
+  email               String
+  emailVerified       Boolean   @default(false)
+  image               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  phoneNumber         String?
+  phoneNumberVerified Boolean?
+  birthday            DateTime?
+  sessions            Session[]
+  accounts            Account[]
+
+  @@unique([email])
+  @@unique([phoneNumber])
+  @@map("user")
+
+  eventOrganizers EventOrganizer[]
+  eventRegistrations EventRegistration[]
+}
+```
+
+## Session Management
+
+Better Auth manages sessions with expiration tracking:
+
+```prisma
+// apps/backend/prisma/schema.prisma:37-51
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+```
+
+## Welcome Notifications
+
+When a new user is created, they automatically receive a welcome notification via email and WhatsApp:
+
+```typescript
+// apps/backend/src/auth/auth.service.ts:42-52
+databaseHooks: {
+  user: {
+    create: {
+      after: async (user) => {
+        this.sendWelcomeNotification(user.id, user.name).catch((err) =>
+          this.logger.error('Failed to send welcome notification', err),
+        );
+      },
+    },
+  },
+}
+```
+
+The welcome message:
+
+```typescript
+// apps/backend/src/auth/auth.service.ts:82-104
+private async sendWelcomeNotification(userId: string, name: string): Promise<void> {
+  const displayName = name || 'there';
+  await this.notificationService.notifyUser(userId, {
+    subject: 'Welcome to Pathway!',
+    body: [
+      `Hi ${displayName},`,
+      '',
+      'Welcome to Pathway! We\'re excited to have you on board.',
+      '',
+      'Discover workshops, hackathons, and networking events tailored for students.',
+      'Build your portfolio and meet your future co-founders today.',
+      '',
+      '— The Pathway Team',
+    ].join('\n'),
+    whatsappText: [
+      `Hi ${displayName}! Welcome to *Pathway*!`,
+      '',
+      'Discover workshops, hackathons, and events tailored for students.',
+      'Start exploring now!',
+    ].join('\n'),
+  });
+}
+```
+
+## Protected Routes
+
+API endpoints can be protected using the `protectedRoute` middleware:
+
+```typescript
+// Example from apps/backend/src/events/events.controller.ts:47-59
+@Implement(contract.events.create)
+async create() {
+  return implement(contract.events.create)
+    .use(protectedRoute)  // Requires authentication
+    .handler(async ({ context, input }) => {
+      // context.session.user.id is available
+      await this.eventsService.create(context.session!.user.id, {
+        ...input,
+      });
+    });
+}
+```
+
+## API Endpoints
+
+All authentication endpoints are handled through Better Auth at `/auth/*`:
+
+```typescript
+// apps/backend/src/auth/auth.controller.ts:6-15
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @All('*path')
+  async handleAuth(@Req() req: Request, @Res() res: Response) {
+    const handler = toNodeHandler(this.authService.instance);
+    await handler(req, res);
+  }
+}
+```
+
+## Configuration
+
+Better Auth configuration is centralized in `auth.base.ts`:
+
+```typescript
+// apps/backend/src/auth/auth.base.ts:9-43
+export function createAuthBaseConfig(overrides?: AuthBaseOverrides) {
+  return {
+    database: {
+      provider: 'sqlite',
+    },
+    baseURL: process.env.BETTER_AUTH_URL,
+    secret: process.env.BETTER_AUTH_SECRET,
+    basePath: '/auth',
+
+    user: {
+      additionalFields: {
+        birthday: {
+          type: 'date',
+        },
+      },
+    },
+
+    emailAndPassword: {
+      enabled: true,
+    },
+
+    socialProviders: {
+      google: {
+        enabled: true,
+        clientId: process.env.GOOGLE_CLIENT_ID as string,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      }
+    },
+
+    plugins: [
+      phoneNumber(overrides?.phoneNumber),
+      ...(process.env.NODE_ENV === 'development' ? [openAPI()] : []),
+    ],
+  } satisfies BetterAuthOptions;
+}
+```
+
+## Environment Variables
+
+Required environment variables for authentication:
+
+- `BETTER_AUTH_URL` - Base URL for Better Auth
+- `BETTER_AUTH_SECRET` - Secret key for session encryption
+- `GOOGLE_CLIENT_ID` - Google OAuth client ID
+- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret

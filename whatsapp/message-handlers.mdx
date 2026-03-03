@@ -1,0 +1,341 @@
+---
+title: 'Message Handlers'
+description: 'Learn how to handle WhatsApp messages using custom decorators and the dispatcher system'
+---
+
+The WhatsApp Bot uses a custom decorator-based system to handle incoming messages and WhatsApp events. This system is built on NestJS's reflection capabilities and provides a clean, declarative way to define message handlers.
+
+## Handler Decorators
+
+Two main decorators are available for creating message handlers:
+
+### @On Decorator
+
+The `@On` decorator listens to any Baileys event:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/decorators/on.decorator.ts:9
+export function On<K extends keyof BaileysEventMap>(event: K) {
+  return <T extends EventHandler<K>>(
+    _target: object,
+    _propertyKey: string | symbol,
+    descriptor: TypedPropertyDescriptor<T>,
+  ): TypedPropertyDescriptor<T> => {
+    Reflect.defineMetadata(BAILEYS_ON_EVENT, event, descriptor.value!);
+    return descriptor;
+  };
+}
+```
+
+**Usage Example:**
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:139
+@On('messages.upsert')
+private handleMessagesUpsert(
+  payload: Partial<BaileysEventMap['messages.upsert']>,
+) {
+  const { type, messages } = payload;
+
+  if (type !== 'notify') return;
+  for (const message of messages ?? []) {
+    this.logger.info(message);
+  }
+}
+```
+
+### @MessageStartsWith Decorator
+
+The `@MessageStartsWith` decorator is a specialized decorator for matching messages that start with a specific prefix:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/decorators/message-starts-with.decorator.ts:8
+export function MessageStartsWith(prefix: string) {
+  return <T>(
+    target: object,
+    propertyKey: string | symbol,
+    descriptor: TypedPropertyDescriptor<T>,
+  ): TypedPropertyDescriptor<T> => {
+    const filter: MessageFilter = { type: 'startsWith', value: prefix };
+    Reflect.defineMetadata(BAILEYS_MESSAGE_FILTER, filter, descriptor.value!);
+    Reflect.defineMetadata(
+      BAILEYS_ON_EVENT,
+      'messages.upsert',
+      descriptor.value!,
+    );
+    return descriptor;
+  };
+}
+```
+
+**Usage Example:**
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:151
+@MessageStartsWith('ping')
+private async handlePing(msg: WAMessage): Promise<void> {
+  const jid = msg.key.remoteJid;
+  if (jid) {
+    await this.sock.sendMessage(jid, { text: 'pong' });
+  }
+}
+```
+
+## Message Dispatcher
+
+The `BaileysDispatcher` is responsible for routing events to the appropriate handlers.
+
+### Initialization
+
+The dispatcher is initialized by scanning all providers for methods decorated with event handlers:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.service.ts:52
+private initializeDispatcher(): void {
+  const providers = this.discoveryService.getProviders();
+  const providersWithHandlers = providers.filter((wrapper) => {
+    if (!wrapper.instance || wrapper.isNotMetatype) return false;
+
+    const prototype = Object.getPrototypeOf(wrapper.instance) as object;
+    return Object.getOwnPropertyNames(prototype).some((methodName) => {
+      const method = (wrapper.instance as Record<string, unknown>)[
+        methodName
+      ];
+      return (
+        typeof method === 'function' &&
+        Reflect.hasMetadata(BAILEYS_ON_EVENT, method)
+      );
+    });
+  });
+
+  this.dispatcher = new BaileysDispatcher(providersWithHandlers);
+}
+```
+
+### Event Dispatching
+
+When events are received, the dispatcher routes them to matching handlers:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/dispatcher.ts:28
+dispatch<K extends keyof BaileysEventMap>(
+  eventName: K,
+  payload: BaileysEventMap[K],
+): void {
+  for (const provider of this.providerInstances) {
+    const prototype = Object.getPrototypeOf(provider) as object;
+
+    for (const methodName of Object.getOwnPropertyNames(prototype)) {
+      const handler = (provider as Record<string, unknown>)[methodName];
+      if (typeof handler !== 'function') continue;
+
+      const event = Reflect.getMetadata(BAILEYS_ON_EVENT, handler) as
+        | keyof BaileysEventMap
+        | undefined;
+      if (event !== eventName) continue;
+
+      // message filter: pass single msg to handler, validate type === 'notify'
+      const filter = Reflect.getMetadata(BAILEYS_MESSAGE_FILTER, handler) as
+        | MessageFilter
+        | undefined;
+      if (filter && eventName === 'messages.upsert') {
+        const payloadTyped = payload as unknown as MessagesUpsertPayload;
+        if (payloadTyped.type !== 'notify') continue;
+
+        for (const msg of payloadTyped.messages ?? []) {
+          if (!this.matchMessageFilter(msg, filter)) continue;
+          (handler as BaileysEventHandler).call(provider, msg);
+        }
+        continue;
+      }
+
+      (handler as BaileysEventHandler).call(provider, payload);
+    }
+  }
+}
+```
+
+### Message Filtering
+
+The dispatcher supports message filtering for `@MessageStartsWith` handlers:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/dispatcher.ts:64
+private matchMessageFilter(msg: WAMessage, filter: MessageFilter): boolean {
+  const text =
+    msg.message?.conversation ?? msg.message?.extendedTextMessage?.text;
+
+  if (!text) return false;
+
+  if (filter.type === 'startsWith') {
+    return text.startsWith(filter.value);
+  }
+
+  return true;
+}
+```
+
+## BullMQ Queue Processing
+
+The `BaileysProcessor` handles outbound messages from the BullMQ queue:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.processor.ts:7
+@Processor('whatsapp')
+export class BaileysProcessor extends WorkerHost {
+  constructor(private readonly baileysService: BaileysService) {
+    super();
+  }
+
+  private readonly logger = new Logger(BaileysProcessor.name);
+
+  async process(job: Job): Promise<void> {
+    this.logger.debug(job.data);
+
+    switch (job.name) {
+      case 'send-otp': {
+        const parsed = sendOtpSchema.safeParse(job.data);
+        if (!parsed.success) {
+          this.logger.warn('send-otp job data invalid', parsed.error.flatten());
+          return job.remove();
+        }
+        const data = parsed.data;
+        const sock = this.baileysService.sock;
+        if (!sock) {
+          this.logger.warn('WhatsApp socket not ready yet, skipping send-otp');
+          throw new Error('WhatsApp socket not ready');
+        }
+        const jid = data.phoneNumber + '@s.whatsapp.net';
+        this.logger.debug(`Sending OTP to ${data.phoneNumber} -> ${jid}`);
+        await sock.sendMessage(jid, {
+          text: `Your OTP is *${data.code}*`,
+        });
+        this.logger.debug('success!');
+        break;
+      }
+      case 'send-message': {
+        const parsed = sendMessageSchema.safeParse(job.data);
+        if (!parsed.success) {
+          this.logger.warn('send-message job data invalid', parsed.error.flatten());
+          return job.remove();
+        }
+        const data = parsed.data;
+        const sock = this.baileysService.sock;
+        if (!sock) {
+          this.logger.warn('WhatsApp socket not ready yet, skipping send-message');
+          throw new Error('WhatsApp socket not ready');
+        }
+        const jid = data.to.includes('@') ? data.to : data.to + '@s.whatsapp.net';
+        this.logger.debug(`Sending message to ${jid}`);
+        await sock.sendMessage(jid, { text: data.text });
+        this.logger.debug('send-message success');
+        break;
+      }
+    }
+  }
+}
+```
+
+### Job Types
+
+#### send-otp
+
+Sends an OTP code to a phone number:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.schema.ts:3
+export const sendOtpSchema = z.object({
+  phoneNumber: z
+    .string()
+    .min(1)
+    .transform((val) => val.replace(/\+/g, '')),
+  code: z.string(),
+});
+```
+
+**Example Job Data:**
+```json
+{
+  "phoneNumber": "1234567890",
+  "code": "123456"
+}
+```
+
+#### send-message
+
+Sends a text message to a phone number or group:
+
+```typescript
+// apps/whatsapp-bot/src/baileys/baileys.schema.ts:12
+export const sendMessageSchema = z.object({
+  to: z
+    .string()
+    .min(1)
+    .transform((val) => val.replace(/\+/g, '')),
+  text: z.string().min(1),
+});
+```
+
+**Example Job Data:**
+```json
+{
+  "to": "1234567890",
+  "text": "Your event starts in 30 minutes!"
+}
+```
+
+## Creating Custom Handlers
+
+To create a custom message handler:
+
+1. **Create a provider** in the Baileys module or import it
+2. **Add decorated methods** to handle events
+3. **Use reflection metadata** to register handlers
+
+**Example:**
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { MessageStartsWith, On } from './decorators';
+import { WAMessage } from 'baileys';
+import { BaileysService } from './baileys.service';
+
+@Injectable()
+export class CustomHandlers {
+  constructor(private readonly baileys: BaileysService) {}
+
+  @MessageStartsWith('help')
+  async handleHelp(msg: WAMessage): Promise<void> {
+    const jid = msg.key.remoteJid;
+    if (jid) {
+      await this.baileys.sock.sendMessage(jid, {
+        text: 'Available commands:\n- ping\n- help'
+      });
+    }
+  }
+
+  @On('presence.update')
+  handlePresenceUpdate(update: any): void {
+    console.log('User presence changed:', update);
+  }
+}
+```
+
+## Available Events
+
+Some commonly used Baileys events:
+
+- `connection.update`: Connection state changes
+- `messages.upsert`: New messages received
+- `messages.update`: Message status updates
+- `presence.update`: User online/offline status
+- `creds.update`: Authentication credentials updated
+- `groups.update`: Group metadata changes
+
+Refer to the [Baileys documentation](https://github.com/WhiskeySockets/Baileys) for a complete list of events.
+
+## Next Steps
+
+<Card title="Overview" icon="book" href="/whatsapp/overview">
+  Return to WhatsApp Bot overview
+</Card>

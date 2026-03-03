@@ -1,0 +1,115 @@
+---
+title: Introduction
+description: A modern, full-stack event management platform built for hackathons and student events
+---
+
+## Welcome to DragonHacks Event Platform
+
+The DragonHacks Event Platform is a comprehensive event management system designed for hackathons, workshops, and student events. Built with modern technologies and a monorepo architecture, it provides everything you need to create, manage, and attend events.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running in minutes with our step-by-step setup guide
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Understand the platform's structure and how components work together
+  </Card>
+  <Card title="Backend API" icon="server" href="/api/introduction">
+    Explore the NestJS backend with oRPC contracts
+  </Card>
+  <Card title="Frontend" icon="window" href="/frontend/overview">
+    Learn about the Next.js 16 frontend with React 19
+  </Card>
+</CardGroup>
+
+## What You Can Build
+
+The platform provides a complete event management solution:
+
+- **Event Discovery**: Browse and search for workshops, hackathons, and networking events
+- **Event Management**: Create and manage events with rich details, banners, and custom locations
+- **User Registration**: Seamless sign-up and authentication with Better Auth
+- **Check-in System**: QR code-based check-in for event attendees
+- **WhatsApp Notifications**: Automated notifications via WhatsApp bot using Baileys
+- **Announcements**: Keep attendees informed with event-specific announcements
+- **Media Storage**: File uploads with MinIO S3-compatible storage
+
+## Key Features
+
+<Note>
+  The platform uses a type-safe contract system with oRPC, ensuring end-to-end type safety from backend to frontend.
+</Note>
+
+### Event Types & Categories
+
+Support for multiple event formats:
+- Seminars, Workshops, Competitions, and Bootcamps
+- Tech, Science, Math, Biology, Sports, Social Science categories
+- Online and offline event locations
+- Public and private event visibility
+
+### Registration & Approval
+
+- Flexible registration workflows
+- Optional approval requirements
+- Capacity management
+- Waitlist support
+- Registration status tracking (Pending, Approved, Rejected, Waitlist)
+
+### Real-time Features
+
+- Job queue processing with BullMQ and Redis
+- Event-driven architecture
+- WhatsApp bot integration for notifications
+- Email notifications with AWS SES
+
+## Technology Stack
+
+Built with modern, production-ready technologies:
+
+**Backend** (apps/backend/)
+- NestJS 11 framework
+- oRPC for type-safe API contracts
+- Prisma ORM with SQLite
+- Better Auth for authentication
+- BullMQ for job processing
+- AWS SDK for S3 and SES
+
+**Frontend** (apps/frontend/)
+- Next.js 16 with App Router
+- React 19 with React Compiler
+- TanStack Query for data fetching
+- Tailwind CSS 4 for styling
+- Shadcn UI components
+
+**WhatsApp Bot** (apps/whatsapp-bot/)
+- NestJS microservice
+- Baileys library for WhatsApp integration
+- BullMQ for message queue
+- QR code generation
+
+**Infrastructure**
+- Turborepo for monorepo management
+- Docker Compose for local development
+- Redis for caching and queues
+- MinIO for S3-compatible object storage
+
+## Next Steps
+
+<Steps>
+  <Step title="Get Started">
+    Follow the [Quickstart Guide](/quickstart) to set up your development environment
+  </Step>
+  
+  <Step title="Explore the Architecture">
+    Learn about the [system architecture](/architecture) and how components interact
+  </Step>
+  
+  <Step title="Build Features">
+    Start building with the API reference and component documentation
+  </Step>
+</Steps>
+
+<Warning>
+  This platform is designed for development and educational purposes. Review the security settings before deploying to production.
+</Warning>
