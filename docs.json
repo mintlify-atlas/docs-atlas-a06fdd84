@@ -121,6 +121,13 @@
               "api/announcements/overview",
               "api/announcements/create"
             ]
+          },
+          {
+            "group": "Organizers",
+            "pages": [
+              "api/organizers/add",
+              "api/organizers/remove"
+            ]
           }
         ]
       }

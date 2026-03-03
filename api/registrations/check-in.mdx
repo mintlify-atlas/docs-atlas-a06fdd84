@@ -24,7 +24,7 @@ await client.events.registrations.registerAttandance({
 ```
 
 ```bash cURL
-curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/attandance \
+curl -X POST http://localhost:3000/events/clx1234567890abcdef/registrations/reg_abc123/attandance \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 </CodeGroup>
@@ -118,7 +118,7 @@ await client.events.registrations.unregisterAttandance({
 ```
 
 ```bash cURL
-curl -X DELETE https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/attandance \
+curl -X DELETE http://localhost:3000/events/clx1234567890abcdef/registrations/reg_abc123/attandance \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 </CodeGroup>

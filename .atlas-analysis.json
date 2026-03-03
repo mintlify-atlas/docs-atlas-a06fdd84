@@ -137,6 +137,8 @@
     "POST /events/banner-upload-url - Get presigned upload URL",
     "POST /events/registrations - Register for event",
     "POST /events/announcements - Create announcement",
+    "POST /events/{eventId}/organizers - Add event organizer",
+    "DELETE /events/{eventId}/organizers/{userId} - Remove event organizer",
     "Better Auth endpoints for authentication",
     "WhatsApp bot message handlers"
   ]

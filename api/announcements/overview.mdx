@@ -7,12 +7,12 @@ description: 'Retrieve all announcements for an event'
 
 <CodeGroup>
 ```bash cURL
-curl https://api.dragonhacks.io/events/{eventId}/announcements
+curl http://localhost:3000/events/{eventId}/announcements
 ```
 
 ```typescript TypeScript
 const response = await fetch(
-  `https://api.dragonhacks.io/events/${eventId}/announcements`
+  `http://localhost:3000/events/${eventId}/announcements`
 );
 const data = await response.json();
 ```

@@ -1,0 +1,92 @@
+---
+title: Remove organizer
+api: DELETE /events/{eventId}/organizers/{userId}
+---
+
+Remove an organizer from an event. Only existing event organizers can remove other organizers. The event owner (creator) cannot be removed.
+
+## Authentication
+
+<Note>
+  This endpoint requires authentication. Include the session token in your request cookies.
+</Note>
+
+Only users who are already organizers of the event can remove other organizers.
+
+<Warning>
+  The event owner (the user who created the event) cannot be removed as an organizer.
+</Warning>
+
+## Request
+
+<ParamField path="eventId" type="string" required>
+  The ID of the event
+</ParamField>
+
+<ParamField path="userId" type="string" required>
+  The ID of the user to remove as an organizer
+</ParamField>
+
+## Response
+
+Returns `204 No Content` on success.
+
+## Example Request
+
+```bash
+curl -X DELETE http://localhost:3000/events/clxy123abc/organizers/user_abc123 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN" \
+  -d '{
+    "eventId": "clxy123abc",
+    "userId": "user_abc123"
+  }'
+```
+
+## Error Responses
+
+| Status Code | Error Code | Description |
+|-------------|------------|-------------|
+| 401 | UNAUTHORIZED | Not authenticated |
+| 403 | FORBIDDEN | User is not an organizer or attempting to remove event owner |
+| 404 | NOT_FOUND | Event not found or organizer relationship not found |
+
+### Example Error Response
+
+```json
+{
+  "code": "FORBIDDEN",
+  "message": "Cannot remove event owner"
+}
+```
+
+## Use Cases
+
+### Revoking Organizer Access
+
+If a team member no longer needs organizer permissions:
+
+```typescript
+await fetch(`/events/${eventId}/organizers/${userId}`, {
+  method: 'DELETE',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    eventId,
+    userId
+  }),
+  credentials: 'include' // Include cookies
+});
+```
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Add Organizer" icon="user-plus" href="/api/organizers/add">
+    Add a new organizer to an event
+  </Card>
+  <Card title="List Event Details" icon="calendar" href="/api/events/get-by-id">
+    View event details including organizers list
+  </Card>
+</CardGroup>

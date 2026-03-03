@@ -27,7 +27,7 @@ console.log(registration)
 ```
 
 ```bash cURL
-curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations \
+curl -X POST http://localhost:3000/events/clx1234567890abcdef/registrations \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 </CodeGroup>
@@ -110,7 +110,7 @@ await client.events.registrations.unregister({
 ```
 
 ```bash cURL
-curl -X DELETE https://api.dragonhacks.io/events/clx1234567890abcdef/registrations \
+curl -X DELETE http://localhost:3000/events/clx1234567890abcdef/registrations \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 </CodeGroup>
@@ -153,7 +153,7 @@ await client.events.registrations.approveRegistration({
 ```
 
 ```bash cURL
-curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/approve \
+curl -X POST http://localhost:3000/events/clx1234567890abcdef/registrations/reg_abc123/approve \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 </CodeGroup>
@@ -202,7 +202,7 @@ await client.events.registrations.rejectRegistration({
 ```
 
 ```bash cURL
-curl -X POST https://api.dragonhacks.io/events/clx1234567890abcdef/registrations/reg_abc123/reject \
+curl -X POST http://localhost:3000/events/clx1234567890abcdef/registrations/reg_abc123/reject \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 </CodeGroup>
@@ -259,7 +259,7 @@ if (result.hasNextPage) {
 ```
 
 ```bash cURL
-curl -X GET "https://api.dragonhacks.io/events/clx1234567890abcdef/registrations?limit=20" \
+curl -X GET "http://localhost:3000/events/clx1234567890abcdef/registrations?limit=20" \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 </CodeGroup>

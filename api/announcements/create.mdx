@@ -7,7 +7,7 @@ description: 'Create a new announcement for an event and notify all approved reg
 
 <CodeGroup>
 ```bash cURL
-curl -X POST https://api.dragonhacks.io/events/{eventId}/announcements \
+curl -X POST http://localhost:3000/events/{eventId}/announcements \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -19,7 +19,7 @@ curl -X POST https://api.dragonhacks.io/events/{eventId}/announcements \
 
 ```typescript TypeScript
 const response = await fetch(
-  `https://api.dragonhacks.io/events/${eventId}/announcements`,
+  `http://localhost:3000/events/${eventId}/announcements`,
   {
     method: 'POST',
     headers: {
@@ -117,7 +117,7 @@ When an announcement is created, all users with **APPROVED** event registrations
 ### Email Notification
 - **Subject**: `[{EventName}] {Title}`
 - **Body**: 
-  ```
+  ```text
   New announcement for "{EventName}":
 
   {Title}
@@ -127,7 +127,7 @@ When an announcement is created, all users with **APPROVED** event registrations
 
 ### WhatsApp Notification
 The WhatsApp message uses the following format:
-```
+```text
 📢 *{EventName}*
 
 *{Title}*
@@ -135,7 +135,7 @@ The WhatsApp message uses the following format:
 ```
 
 ### Example WhatsApp Message
-```
+```text
 📢 *DragonHacks 2024*
 
 *WiFi Information*
@@ -146,24 +146,24 @@ The WiFi network is DragonHacks2024. Password: hackathon2024
 
 <ResponseField name="FORBIDDEN" type="error">
   Returned when the authenticated user is not an organizer of the event
-  
-  ```json
-  {
-    "code": "FORBIDDEN",
-    "message": "Only organizers can create announcements"
-  }
-  ```
 </ResponseField>
+
+```json
+{
+  "code": "FORBIDDEN",
+  "message": "Only organizers can create announcements"
+}
+```
 
 <ResponseField name="NOT_FOUND" type="error">
   Returned when the event with the specified ID does not exist
-  
-  ```json
-  {
-    "code": "NOT_FOUND"
-  }
-  ```
 </ResponseField>
+
+```json
+{
+  "code": "NOT_FOUND"
+}
+```
 
 ## Notes
 

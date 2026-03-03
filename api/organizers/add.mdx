@@ -1,0 +1,88 @@
+---
+title: Add organizer
+api: POST /events/{eventId}/organizers
+---
+
+Add a new organizer to an event. Only existing event organizers can add new organizers.
+
+## Authentication
+
+<Note>
+  This endpoint requires authentication. Include the session token in your request cookies.
+</Note>
+
+Only users who are already organizers of the event can add new organizers.
+
+## Request
+
+<ParamField path="eventId" type="string" required>
+  The ID of the event
+</ParamField>
+
+<ParamField body="user" type="string" required>
+  Email address or phone number of the user to add as an organizer
+</ParamField>
+
+## Response
+
+Returns `204 No Content` on success.
+
+## Example Request
+
+```bash
+curl -X POST http://localhost:3000/events/clxy123abc/organizers \
+  -H "Content-Type: application/json" \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN" \
+  -d '{
+    "eventId": "clxy123abc",
+    "user": "organizer@example.com"
+  }'
+```
+
+You can also use a phone number:
+
+```bash
+curl -X POST http://localhost:3000/events/clxy123abc/organizers \
+  -H "Content-Type: application/json" \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION_TOKEN" \
+  -d '{
+    "eventId": "clxy123abc",
+    "user": "+1234567890"
+  }'
+```
+
+## Error Responses
+
+| Status Code | Error Code | Description |
+|-------------|------------|-------------|
+| 401 | UNAUTHORIZED | Not authenticated |
+| 403 | FORBIDDEN | User is not an organizer of this event |
+| 404 | NOT_FOUND | Event not found or user not found |
+| 400 | BAD_REQUEST | User is already an organizer |
+
+### Example Error Response
+
+```json
+{
+  "code": "NOT_FOUND",
+  "message": "User not found"
+}
+```
+
+```json
+{
+  "code": "BAD_REQUEST",
+  "message": "User is already an organizer"
+}
+```
+
+## Related Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Remove Organizer" icon="user-minus" href="/api/organizers/remove">
+    Remove an organizer from an event
+  </Card>
+  <Card title="Create Event" icon="calendar-plus" href="/api/events/create">
+    Create a new event (creator becomes owner/organizer)
+  </Card>
+</CardGroup>
